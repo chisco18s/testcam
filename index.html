@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>MobileKinect — Detección de Cuerpo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f0f1b;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    .container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+    #video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Espejo para selfie */
+    }
+    #canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .ui {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+      z-index: 10;
+      padding: 0 20px;
+    }
+    .status {
+      background: rgba(0,0,0,0.6);
+      padding: 8px 16px;
+      border-radius: 20px;
+      display: inline-block;
+      font-size: 16px;
+    }
+    .instructions {
+      position: absolute;
+      top: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 14px;
+      color: #4cc9f0;
+    }
+    .keypoint {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #ff6b6b;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      box-shadow: 0 0 8px #ff6b6b;
+    }
+    .connection {
+      position: absolute;
+      height: 2px;
+      background: #4ade80;
+      transform-origin: 0 0;
+      z-index: 4;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    
+    <div class="instructions">Apunta tu cámara a una persona. Aleja ~2 metros.</div>
+    <div class="ui">
+      <div class="status" id="status">Iniciando IA...</div>
+    </div>
+  </div>
+
+  <!-- Cargar TensorFlow.js y MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+
+  <script>
+    // Configuración
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+
+    let pose;
+    let isReady = false;
+
+    // Inicializar cámara
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' }, // Usa cámara frontal por defecto
+        audio: false
+      });
+      video.srcObject = stream;
+      
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          // Ajustar canvas al tamaño real del video
+          video.play();
+          resolve();
+        };
+      });
+    }
+
+    // Inicializar MediaPipe Pose
+    function setupPose() {
+      pose = new Pose({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }
+      });
+
+      pose.setOptions({
+        modelComplexity: 1, // 0, 1 o 2 (1 = equilibrio velocidad/precisión)
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      pose.onResults(onResults);
+      isReady = true;
+      statusEl.textContent = "✅ ¡Listo! Buscando persona...";
+    }
+
+    // Procesar resultados
+    function onResults(results) {
+      // Limpiar canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (results.poseLandmarks) {
+        statusEl.textContent = "🟢 Persona detectada";
+        
+        // Dibujar puntos clave
+        drawKeypoints(results.poseLandmarks, 0.5, ctx);
+        
+        // Dibujar conexiones (esqueleto)
+        drawSkeleton(results.poseLandmarks, 0.5, ctx);
+
+        // Detección de gestos
+        const leftRaised = isHandRaised(results.poseLandmarks, 'left', 0.5);
+        const rightRaised = isHandRaised(results.poseLandmarks, 'right', 0.5);
+        const crouched = isCrouching(results.poseLandmarks, 0.5);
+
+        if (crouched) {
+          statusEl.textContent = "⬇️ Agachado";
+        } else if (leftRaised && rightRaised) {
+          statusEl.textContent = "🖐️ Ambas manos levantadas";
+        } else if (leftRaised) {
+          statusEl.textContent = "🖐️ Mano izquierda levantada";
+        } else if (rightRaised) {
+          statusEl.textContent = "🖐️ Mano derecha levantada";
+        }
+
+        // Mostrar etiqueta en canvas (esquina superior izquierda)
+        drawLabel(statusEl.textContent, 12, 28);
+
+      } else {
+        statusEl.textContent = "🔍 Esperando persona...";
+      }
+    }
+
+    // Dibujar puntos
+    function drawKeypoints(landmarks, minConfidence, ctx) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      canvas.width = w;
+      canvas.height = h;
+      
+      landmarks.forEach((landmark, i) => {
+        if (landmark.score > minConfidence) {
+          const x = landmark.x * w;
+          const y = landmark.y * h;
+          
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fill();
+        }
+      });
+    }
+
+    // Conexiones del cuerpo (como en Kinect)
+    const connections = [
+      [0, 1], [1, 2], [2, 3], [3, 7], // cara
+      [0, 4], [4, 5], [5, 6], [6, 8],
+      [9, 10], // hombros
+      [11, 12], [11, 13], [13, 15], // brazo izq
+      [12, 14], [14, 16], // brazo der
+      [11, 23], [12, 24], // torso
+      [23, 24], // cadera
+      [23, 25], [25, 27], [27, 29], [27, 31], // pierna izq
+      [24, 26], [26, 28], [28, 30], [28, 32]  // pierna der
+    ];
+
+    function drawSkeleton(landmarks, minConfidence, ctx) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      
+      connections.forEach(([i, j]) => {
+        const a = landmarks[i];
+        const b = landmarks[j];
+        if (a.score > minConfidence && b.score > minConfidence) {
+          ctx.beginPath();
+          ctx.moveTo(a.x * w, a.y * h);
+          ctx.lineTo(b.x * w, b.y * h);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#4ade80';
+          ctx.stroke();
+        }
+      });
+    }
+
+    // Detección de gestos
+    function drawLabel(text, x, y) {
+      ctx.font = '20px Segoe UI, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      const padding = 8;
+      const metrics = ctx.measureText(text);
+      const w = metrics.width + padding * 2;
+      const h = 30;
+      ctx.fillRect(x, y - h + 6, w, h);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, x + padding, y);
+    }
+
+    function isHandRaised(landmarks, side = 'left', minConfidence = 0.5) {
+      const wristIdx = side === 'left' ? 15 : 16;
+      const shoulderIdx = side === 'left' ? 11 : 12;
+      const wrist = landmarks[wristIdx];
+      const shoulder = landmarks[shoulderIdx];
+      if (!wrist || !shoulder) return false;
+      if (wrist.score <= minConfidence || shoulder.score <= minConfidence) return false;
+      // En coordenadas de imagen y aumenta hacia abajo: mano levantada -> y(wrist) < y(shoulder)
+      return wrist.y < shoulder.y - 0.05;
+    }
+
+    function isCrouching(landmarks, minConfidence = 0.5) {
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftKnee = landmarks[25];
+      const rightKnee = landmarks[26];
+      if (!leftShoulder || !rightShoulder || !leftHip || !rightHip || !leftKnee || !rightKnee) return false;
+      const scores = [leftShoulder.score, rightShoulder.score, leftHip.score, rightHip.score, leftKnee.score, rightKnee.score];
+      if (scores.some(s => s <= minConfidence)) return false;
+
+      const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+      const hipY = (leftHip.y + rightHip.y) / 2;
+      const kneeY = (leftKnee.y + rightKnee.y) / 2;
+
+      const torsoLen = Math.abs(hipY - shoulderY);
+      const legLen = Math.abs(kneeY - hipY);
+
+      // Si el torso se ha acortado bastante respecto a la pierna, probablemente está agachado
+      return torsoLen < legLen * 0.6;
+    }
+
+    // Bucle principal
+    async function detectLoop() {
+      if (isReady && video.readyState === video.HAVE_ENOUGH_DATA) {
+        await pose.send({ image: video });
+      }
+      requestAnimationFrame(detectLoop);
+    }
+
+    // Iniciar todo
+    async function init() {
+      try {
+        await setupCamera();
+        setupPose();
+        detectLoop();
+      } catch (e) {
+        statusEl.textContent = "❌ Error: " + e.message;
+        console.error(e);
+      }
+    }
+
+    // Ajustar orientación en móviles
+    window.addEventListener('deviceorientation', () => {
+      // Opcional: rotar si es necesario
+    });
+
+    // Iniciar cuando la página cargue
+    window.addEventListener('load', init);
+  </script>
+
+</body>
+</html>
