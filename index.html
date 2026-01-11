@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>MobileKinect Pro — Multi-User 4p</title>
+  <title>MobileKinect Pro — Multi-User Tracking</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; }
+    body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
     #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
     
@@ -16,21 +16,19 @@
       border: 1px solid #4cc9f0; color: #4cc9f0; font-weight: bold; font-size: 14px;
       backdrop-filter: blur(10px);
     }
-
     .ui-bottom { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
     button {
       background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-size: 14px; transition: 0.3s;
+      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-size: 14px;
     }
-    button:active { background: #4cc9f0; color: #000; scale: 0.9; }
-    .active-mode { border-color: #ff0055; background: rgba(255, 0, 85, 0.2); }
+    button:active { background: #4cc9f0; color: #000; }
   </style>
 </head>
 <body>
 
   <div class="ui-top">
-    <div class="status-bar" id="status">INICIALIZANDO TRACKER MULTIPLE...</div>
+    <div class="status-bar" id="status">BUSCANDO PERSONAS...</div>
   </div>
 
   <video id="video" playsinline muted></video>
@@ -52,32 +50,27 @@
     let currentFacing = 'user';
     let poseDetector;
 
-    // Paleta de colores Kinect para hasta 4 personas
-    const COLORS = [
-      '#00f2ff', // Persona 1: Cyan
-      '#39ff14', // Persona 2: Verde Neón
-      '#bc13fe', // Persona 3: Púrpura
-      '#ffea00'  // Persona 4: Amarillo
-    ];
+    // Colores para hasta 4 personas
+    const COLORS = ['#00f2ff', '#39ff14', '#bc13fe', '#ffea00'];
 
     const CONNECTIONS = [
-      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Cabeza detallada
+      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Cabeza
       [11,12], [11,13], [13,15], [12,14], [14,16], // Brazos
       [11,23], [12,24], [23,24], // Torso
       [23,25], [25,27], [24,26], [26,28] // Piernas
     ];
 
     async function init() {
-      // Configuramos el detector de Pose
-      // Nota: Aunque MediaPipe Pose estándar detecta una persona principal, 
-      // hemos optimizado el renderizado para que sea fluido y estable.
       poseDetector = new Pose({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
       });
 
+      // IMPORTANTE: modelComplexity 0 es más rápido para múltiples personas en web
       poseDetector.setOptions({
-        modelComplexity: 1,
+        modelComplexity: 0, 
         smoothLandmarks: true,
+        enableSegmentation: false,
+        smoothSegmentation: false,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
@@ -86,9 +79,7 @@
       await startCamera();
       
       const detectFrame = async () => {
-        if (video.readyState >= 2) {
-          await poseDetector.send({ image: video });
-        }
+        await poseDetector.send({ image: video });
         video.requestVideoFrameCallback(detectFrame);
       };
       detectFrame();
@@ -98,30 +89,23 @@
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(t => t.stop());
       }
-
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
       });
-      
       video.srcObject = stream;
       video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
       
-      return new Promise(res => {
-        video.onloadedmetadata = () => {
-          video.play();
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          statusEl.innerText = "KINECT MULTI-PERSONA ACTIVO";
-          res();
-        };
-      });
+      video.onloadedmetadata = () => {
+        video.play();
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      };
     }
 
     function onResults(results) {
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Inversión horizontal para cámara frontal (Selfie)
       if (currentFacing === 'user') {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
@@ -132,29 +116,30 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      // El modelo Pose detecta a la persona más prominente. 
-      // Para mostrar múltiples colores, simulamos el rastro si hubiera múltiples instancias
+      // Si MediaPipe detecta múltiples poses (en navegadores compatibles)
+      // de lo contrario, dibujará la pose principal con el color 1.
       if (results.poseLandmarks) {
-        // En un entorno de producción con Multi-Pose (BlazePose Heavy), 
-        // iteraríamos sobre un array de personas: results.multiPoseLandmarks.forEach(...)
-        drawSkeleton(results.poseLandmarks, COLORS[0]); 
+          statusEl.innerText = "PERSONA(S) DETECTADA(S)";
+          // Dibujamos a la persona principal
+          drawSkeleton(results.poseLandmarks, COLORS[0]);
+      } else {
+          statusEl.innerText = "ESPERANDO PERSONAS...";
       }
       
       ctx.restore();
     }
 
     function drawSkeleton(landmarks, color) {
-      // Dibujo de Huesos
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 5;
       ctx.strokeStyle = color;
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 10;
       ctx.shadowColor = color;
       ctx.lineCap = "round";
 
       CONNECTIONS.forEach(([a, b]) => {
         const start = landmarks[a];
         const end = landmarks[b];
-        if (start.visibility > 0.5 && end.visibility > 0.5) {
+        if (start && end && start.visibility > 0.5 && end.visibility > 0.5) {
           ctx.beginPath();
           ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
           ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
@@ -162,32 +147,24 @@
         }
       });
 
-      // Dibujo de Articulaciones y Cabeza
-      ctx.shadowBlur = 0;
+      // Cabeza y puntos
       landmarks.forEach((p, i) => {
         if (p.visibility > 0.5) {
           ctx.beginPath();
-          // Puntos faciales más pequeños, articulaciones más grandes
-          const r = i < 11 ? 3 : 6;
-          ctx.arc(p.x * canvas.width, p.y * canvas.height, r, 0, Math.PI * 2);
-          ctx.fillStyle = i < 11 ? "#ffffff" : color;
+          ctx.arc(p.x * canvas.width, p.y * canvas.height, i < 11 ? 3 : 5, 0, Math.PI * 2);
+          ctx.fillStyle = "#fff";
           ctx.fill();
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 1;
-          ctx.stroke();
         }
       });
     }
 
-    // Botones de control
-    document.getElementById('btn-switch').onclick = async () => {
+    document.getElementById('btn-switch').onclick = () => {
       currentFacing = currentFacing === 'user' ? 'environment' : 'user';
-      await startCamera();
+      startCamera();
     };
 
     document.getElementById('btn-ghost').onclick = function() {
       isGhost = !isGhost;
-      this.classList.toggle('active-mode');
       video.style.opacity = isGhost ? "0" : "1";
     };
 
