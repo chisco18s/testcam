@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>MobileKinect Pro — Multi-Persona + Género</title>
+  <title>MobileKinect — Detección de Gestos</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -41,11 +41,13 @@
       padding: 0 20px;
     }
     .status {
-      background: rgba(0,0,0,0.6);
-      padding: 8px 16px;
-      border-radius: 20px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 20px;
+      border-radius: 24px;
       display: inline-block;
-      font-size: 16px;
+      font-size: 18px;
+      font-weight: bold;
+      backdrop-filter: blur(4px);
     }
     .instructions {
       position: absolute;
@@ -55,39 +57,27 @@
       font-size: 14px;
       color: #4cc9f0;
     }
-    .person-count {
-      position: absolute;
-      top: 60px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.7);
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 18px;
-      z-index: 20;
-    }
     .controls {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       display: flex;
-      gap: 8px;
+      gap: 10px;
       justify-content: center;
       align-items: center;
       flex-wrap: wrap;
     }
     .controls button {
-      background: rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.08);
       color: #fff;
-      border: 1px solid rgba(255,255,255,0.08);
-      padding: 8px 12px;
-      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 14px;
+      border-radius: 10px;
       cursor: pointer;
       font-size: 14px;
-      min-width: 80px;
+      min-width: 90px;
     }
     .controls button.active {
-      box-shadow: 0 0 10px rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.12);
+      background: rgba(76, 201, 240, 0.3);
+      border-color: #4cc9f0;
     }
   </style>
 </head>
@@ -97,56 +87,47 @@
     <video id="video" playsinline muted></video>
     <canvas id="canvas"></canvas>
     
-    <div class="instructions">Apunta tu cámara a varias personas. Aleja ~2–3 metros.</div>
-    <div class="person-count" id="personCount">👥 0 personas</div>
+    <div class="instructions">Mueve tu cuerpo frente a la cámara. Aleja ~2 metros.</div>
     
     <div class="ui">
       <div class="controls">
-        <button id="switchCamera">Cambiar cámara</button>
-        <button class="filter-btn active" data-filter="none">Sin filtro</button>
+        <button id="switchCamera">Cámara</button>
+        <button class="filter-btn active" data-filter="none">Normal</button>
         <button class="filter-btn" data-filter="red">Rojo</button>
         <button class="filter-btn" data-filter="green">Verde</button>
-        <button class="filter-btn" data-filter="blue">Azul</button>
       </div>
-      <div class="status" id="status">Iniciando IA...</div>
+      <div class="status" id="status">Iniciando sistema...</div>
     </div>
   </div>
 
-  <!-- Librerías corregidas (SIN ESPACIOS) -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  <!-- ✅ Librerías CORRECTAS de MediaPipe (sin errores) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
-    const personCountEl = document.getElementById('personCount');
     const switchBtn = document.getElementById('switchCamera');
     const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
 
     let currentFilter = 'none';
     let currentFacing = 'user';
-    let detector = null;
+    let pose = null;
     let isReady = false;
 
-    // Colores para cada persona
-    const COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A09EFF', '#FF9AA2', '#B5EAD7'];
-
+    // Inicializar cámara
     async function setupCamera(facing = 'user') {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing },
         audio: false
       });
       if (video.srcObject) {
-        const oldStream = video.srcObject;
-        oldStream.getTracks().forEach(t => t.stop());
+        video.srcObject.getTracks().forEach(t => t.stop());
       }
       video.srcObject = stream;
-      
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         video.onloadedmetadata = () => {
           video.play();
           resolve();
@@ -154,144 +135,124 @@
       });
     }
 
-    // Estimar género basado en proporciones esqueléticas
-    function estimateGender(landmarks) {
-      try {
-        const leftShoulder = landmarks[5];   // Índice 5 en MoveNet
-        const rightShoulder = landmarks[6];
-        const leftHip = landmarks[11];
-        const rightHip = landmarks[12];
-
-        if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return '❓';
-
-        const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x);
-        const hipWidth = Math.abs(rightHip.x - leftHip.x);
-
-        // En promedio, las mujeres tienen caderas más anchas que hombros
-        // Los hombres tienen hombros más anchos que caderas
-        if (shoulderWidth > hipWidth * 1.1) {
-          return 'Hombre';
-        } else if (hipWidth > shoulderWidth * 1.05) {
-          return 'Mujer';
-        } else {
-          return '❓';
+    // Inicializar MediaPipe Pose
+    function setupPose() {
+      pose = new Pose({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
         }
-      } catch (e) {
-        return '❓';
-      }
-    }
-
-    async function setupDetector() {
-      statusEl.textContent = "Cargando modelo de IA...";
-      detector = await poseDetection.create(poseDetection.SupportedModels.MoveNet, {
-        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-        maxPoses: 6
       });
+
+      pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      pose.onResults(onResults);
       isReady = true;
-      statusEl.textContent = "✅ ¡Listo! Buscando personas...";
+      statusEl.textContent = "✅ Listo. Esperando persona...";
     }
 
-    async function detectLoop() {
-      if (!isReady || video.readyState < 2) {
-        requestAnimationFrame(detectLoop);
-        return;
-      }
-
-      const poses = await detector.estimatePoses(video);
-
+    // Procesar resultados
+    function onResults(results) {
       // Ajustar canvas
-      const displayWidth = video.videoWidth;
-      const displayHeight = video.videoHeight;
-      if (displayWidth > 0 && displayHeight > 0) {
-        canvas.width = displayWidth;
-        canvas.height = displayHeight;
-      }
+      const w = video.videoWidth || 640;
+      const h = video.videoHeight || 480;
+      canvas.width = w;
+      canvas.height = h;
 
+      // Limpiar
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const validPoses = poses.filter(pose => 
-        pose.keypoints.some(kp => kp.score > 0.3)
-      );
-
-      // Actualizar conteo
-      const numPeople = validPoses.length;
-      personCountEl.textContent = `👥 ${numPeople} persona${numPeople !== 1 ? 's' : ''}`;
-
-      // Dibujar cada persona
-      validPoses.forEach((pose, index) => {
-        const color = COLORS[index % COLORS.length];
-        const gender = estimateGender(pose.keypoints);
-        const label = `Persona ${index + 1} (${gender})`;
-
-        // Dibujar esqueleto
-        drawSkeleton(pose.keypoints, 0.3, ctx, color);
-        
+      if (results.poseLandmarks) {
         // Dibujar puntos
-        drawKeypoints(pose.keypoints, 0.3, ctx, color);
-        
-        // Etiqueta sobre la cabeza
-        const nose = pose.keypoints[0];
-        if (nose && nose.score > 0.3) {
-          drawPersonLabel(label, nose.x * canvas.width, nose.y * canvas.height - 30, color);
-        }
-      });
-
-      statusEl.textContent = numPeople > 0 
-        ? `🟢 ${numPeople} persona${numPeople !== 1 ? 's' : ''} detectada${numPeople !== 1 ? 's' : ''}` 
-        : "🔍 Esperando personas...";
+        drawKeypoints(results.poseLandmarks, ctx);
+        // Dibujar esqueleto
+        drawSkeleton(results.poseLandmarks, ctx);
+        // Analizar gestos
+        analyzeGestures(results.poseLandmarks);
+      } else {
+        statusEl.textContent = "🔍 Esperando persona...";
+      }
 
       applyFilter();
-      requestAnimationFrame(detectLoop);
     }
 
-    function drawKeypoints(keypoints, minConfidence, ctx, color) {
-      keypoints.forEach(kp => {
-        if (kp.score > minConfidence) {
-          const x = kp.x * canvas.width;
-          const y = kp.y * canvas.height;
+    function drawKeypoints(landmarks, ctx) {
+      landmarks.forEach((landmark, i) => {
+        if (landmark.visibility > 0.6) {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
           ctx.beginPath();
-          ctx.arc(x, y, 5, 0, 2 * Math.PI);
-          ctx.fillStyle = color;
+          ctx.arc(x, y, 6, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
           ctx.fill();
         }
       });
     }
 
-    // Conexiones del cuerpo (MoveNet keypoints)
     const connections = [
-      [0, 1], [0, 2], [1, 3], [2, 4], // cara
-      [5, 6], [5, 11], [6, 12], [11, 12], // torso
-      [5, 7], [7, 9], // brazo izq
-      [6, 8], [8, 10], // brazo der
-      [11, 13], [13, 15], // pierna izq
-      [12, 14], [14, 16]  // pierna der
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [25, 27], [24, 26], [26, 28]
     ];
 
-    function drawSkeleton(keypoints, minConfidence, ctx, color) {
+    function drawSkeleton(landmarks, ctx) {
       connections.forEach(([i, j]) => {
-        const a = keypoints[i];
-        const b = keypoints[j];
-        if (a.score > minConfidence && b.score > minConfidence) {
+        if (landmarks[i].visibility > 0.6 && landmarks[j].visibility > 0.6) {
           ctx.beginPath();
-          ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
-          ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = color;
+          ctx.moveTo(landmarks[i].x * canvas.width, landmarks[i].y * canvas.height);
+          ctx.lineTo(landmarks[j].x * canvas.width, landmarks[j].y * canvas.height);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#4ade80';
           ctx.stroke();
         }
       });
     }
 
-    function drawPersonLabel(text, x, y, color) {
-      ctx.font = 'bold 16px Segoe UI, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      const padding = 6;
-      const metrics = ctx.measureText(text);
-      const w = metrics.width + padding * 2;
-      const h = 24;
-      ctx.fillRect(x - w/2, y - h + 4, w, h);
-      ctx.fillStyle = color;
-      ctx.fillText(text, x - metrics.width/2 + padding, y);
+    function analyzeGestures(landmarks) {
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      const leftWrist = landmarks[15];
+      const rightWrist = landmarks[16];
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftKnee = landmarks[25];
+      const rightKnee = landmarks[26];
+
+      // Verificar visibilidad
+      if (!leftShoulder || !rightShoulder || !leftWrist || !rightWrist || 
+          !leftHip || !rightHip || !leftKnee || !rightKnee) {
+        statusEl.textContent = "❓ Postura no clara";
+        return;
+      }
+
+      // Calcular alturas relativas (menor Y = más arriba en pantalla)
+      const leftHandUp = leftWrist.y < leftShoulder.y - 0.05;
+      const rightHandUp = rightWrist.y < rightShoulder.y - 0.05;
+      const hipsY = (leftHip.y + rightHip.y) / 2;
+      const kneesY = (leftKnee.y + rightKnee.y) / 2;
+      const shouldersY = (leftShoulder.y + rightShoulder.y) / 2;
+      const isCrouching = (hipsY - shouldersY) < (kneesY - hipsY) * 0.8;
+
+      // Determinar acción específica
+      if (isCrouching) {
+        statusEl.textContent = "⬇️ AGACHADO";
+      } else if (leftHandUp && rightHandUp) {
+        statusEl.textContent = "🖐️ AMBAS MANOS LEVANTADAS";
+      } else if (leftHandUp) {
+        statusEl.textContent = "✋ MANO IZQUIERDA LEVANTADA";
+      } else if (rightHandUp) {
+        statusEl.textContent = "✋ MANO DERECHA LEVANTADA";
+      } else if (Math.abs(leftWrist.x - rightWrist.x) > 0.3 && 
+                Math.abs(leftWrist.y - shouldersY) < 0.1 && 
+                Math.abs(rightWrist.y - shouldersY) < 0.1) {
+        statusEl.textContent = "🚶‍♂️ CAMINANDO (movimiento detectado)";
+      } else {
+        statusEl.textContent = "🧍 DE PIE - NEUTRAL";
+      }
     }
 
     function applyFilter() {
@@ -301,9 +262,8 @@
       let color = '#000000';
       if (currentFilter === 'red') color = '#ff0000';
       if (currentFilter === 'green') color = '#00ff00';
-      if (currentFilter === 'blue') color = '#007bff';
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.16;
+      ctx.globalAlpha = 0.12;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
     }
@@ -312,10 +272,12 @@
       currentFacing = currentFacing === 'user' ? 'environment' : 'user';
       try {
         await setupCamera(currentFacing);
-        statusEl.textContent = `✅ Cámara: ${currentFacing === 'user' ? 'Frontal' : 'Trasera'}`;
+        statusEl.textContent = `🔄 Cámara: ${currentFacing === 'user' ? 'Frontal' : 'Trasera'}`;
+        setTimeout(() => {
+          if (isReady) statusEl.textContent = "✅ Listo. Esperando persona...";
+        }, 1500);
       } catch (e) {
-        statusEl.textContent = '❌ Error cámara: ' + e.message;
-        console.error(e);
+        statusEl.textContent = '❌ Error al cambiar cámara';
       }
     }
 
@@ -324,10 +286,18 @@
       filterButtons.forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
     }
 
+    // Bucle principal
+    async function detectLoop() {
+      if (isReady && video.readyState >= 2) {
+        pose.send({ image: video });
+      }
+      requestAnimationFrame(detectLoop);
+    }
+
+    // Iniciar
     async function init() {
       try {
         await setupCamera(currentFacing);
-        await setupDetector();
         
         switchBtn.addEventListener('click', switchCamera);
         filterButtons.forEach(btn => {
@@ -335,6 +305,7 @@
         });
         setFilter('none');
         
+        setupPose();
         detectLoop();
       } catch (e) {
         statusEl.textContent = "❌ Error: " + e.message;
@@ -347,3 +318,4 @@
 
 </body>
 </html>
+
