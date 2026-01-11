@@ -3,35 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro Multi-User — Camera Fix</title>
+  <title>Kinect AI Pro — High Performance</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
     #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
     
+    .status {
+      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6); padding: 5px 15px; border-radius: 20px;
+      color: #00f2ff; font-size: 11px; z-index: 10; border: 1px solid rgba(0,242,255,0.3);
+      backdrop-filter: blur(5px);
+    }
+
     .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
     button {
-      background: rgba(255,255,255,0.15); backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-weight: bold;
-    }
-    button:active { background: #00f2ff; color: #000; }
-    .status {
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px;
-      color: #00f2ff; font-weight: bold; z-index: 10; border: 1px solid #00f2ff;
+      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2); color: white;
+      padding: 12px 22px; border-radius: 50px; cursor: pointer; font-size: 13px;
     }
   </style>
 </head>
 <body>
 
-  <div class="status" id="status">INICIALIZANDO SISTEMA...</div>
+  <div class="status" id="status">OPTIMIZANDO RENDIMIENTO...</div>
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
 
   <div class="ui">
-    <button id="btn-camera">🔄 Girar Cámara</button>
+    <button id="btn-camera">🔄 Cámara</button>
     <button id="btn-ghost">👻 Modo Ghost</button>
   </div>
 
@@ -51,36 +52,34 @@
     let currentFacing = 'user';
     const COLORS = ['#00f2ff', '#39ff14', '#ff0055', '#ffea00'];
 
-    const CONNECTIONS = [
-      [0,1], [0,2], [1,3], [2,4], // Cabeza
-      [5,6], [5,7], [7,9], [6,8], [8,10], // Brazos
-      [5,11], [6,12], [11,12], // Torso
-      [11,13], [13,15], [12,14], [14,16] // Piernas
-    ];
+    // Conexiones simplificadas para ganar FPS
+    const CONNECTIONS = [[0,1],[0,2],[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
 
     async function init() {
-      // 1. Configurar Cámara primero
+      // Forzar Backend WebGL para usar la GPU del Honor
+      await tf.setBackend('webgl');
+      
       await setupCamera();
       
-      // 2. Configurar Detector
-      const model = poseDetection.SupportedModels.MoveNet;
-      detector = await poseDetection.createDetector(model, {
-        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-        enableSmoothing: true
-      });
+      detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet, 
+        {
+          modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+          enableSmoothing: true,
+          multiPoseMaxDimension: 256 // Resolución reducida para máxima velocidad
+        }
+      );
       
-      statusEl.innerText = "KINECT MULTI-PERSONA ACTIVO";
-      renderLoop();
+      statusEl.innerText = "SISTEMA FLUIDO ACTIVO";
+      render();
     }
 
     async function setupCamera() {
-      // Detener tracks anteriores para liberar la cámara
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
-      }
+      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
 
+      // Resolución ideal balanceada para el Honor 400 Lite
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { facingMode: currentFacing, width: 640, height: 480 }
       });
       
       video.srcObject = stream;
@@ -96,13 +95,17 @@
       });
     }
 
-    async function renderLoop() {
-      if (detector && video.readyState >= 2) {
-        const poses = await detector.estimatePoses(video);
+    async function render() {
+      // Solo procesar si el video está listo para evitar lag
+      if (detector && video.readyState === 4) {
+        const poses = await detector.estimatePoses(video, {
+          flipHorizontal: false,
+          maxPoses: 4 // Límite de 4 personas
+        });
         
-        ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        ctx.save();
         if (currentFacing === 'user') {
           ctx.translate(canvas.width, 0);
           ctx.scale(-1, 1);
@@ -113,54 +116,40 @@
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
-        // Dibujar hasta 4 personas si existen
-        poses.slice(0, 4).forEach((pose, index) => {
-          if (pose.score > 0.25) {
-            drawSkeleton(pose, COLORS[index]);
+        // Dibujar solo poses con confianza alta (>20%)
+        for (let i = 0; i < Math.min(poses.length, 4); i++) {
+          if (poses[i].score > 0.2) {
+            drawPose(poses[i], COLORS[i]);
           }
-        });
-        
+        }
         ctx.restore();
       }
-      requestAnimationFrame(renderLoop);
+      // Sincronización con el refresco de pantalla del móvil
+      requestAnimationFrame(render);
     }
 
-    function drawSkeleton(pose, color) {
+    function drawPose(pose, color) {
       ctx.strokeStyle = color;
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 3; // Línea más delgada para reducir carga de dibujo
       ctx.lineCap = "round";
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = color;
 
       CONNECTIONS.forEach(([i, j]) => {
-        const kp1 = pose.keypoints[i];
-        const kp2 = pose.keypoints[j];
-        if (kp1.score > 0.3 && kp2.score > 0.3) {
+        const p1 = pose.keypoints[i];
+        const p2 = pose.keypoints[j];
+        if (p1.score > 0.3 && p2.score > 0.3) {
           ctx.beginPath();
-          ctx.moveTo(kp1.x, kp1.y);
-          ctx.lineTo(kp2.x, kp2.y);
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
         }
       });
-
-      // Cabeza y puntos clave
-      ctx.shadowBlur = 0;
-      pose.keypoints.forEach((kp, i) => {
-        if (kp.score > 0.3) {
-          ctx.beginPath();
-          ctx.arc(kp.x, kp.y, i < 5 ? 3 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = "white";
-          ctx.fill();
-        }
-      });
     }
 
-    // BOTONES REVISADOS
     document.getElementById('btn-camera').onclick = async () => {
       currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
-      statusEl.innerText = "RECONECTANDO CÁMARA...";
+      statusEl.innerText = "REAJUSTANDO CÁMARA...";
       await setupCamera();
-      statusEl.innerText = "KINECT MULTI-PERSONA ACTIVO";
+      statusEl.innerText = "SISTEMA FLUIDO ACTIVO";
     };
 
     document.getElementById('btn-ghost').onclick = function() {
