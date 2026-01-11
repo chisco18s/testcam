@@ -3,107 +3,150 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Ultra-Fast</title>
+  <title>Kinect AI Pro — Fix</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; }
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+    body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; background: #111; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
-    .ui { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; }
+    
+    .status {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 20px;
+      color: #00f2ff; font-size: 12px; z-index: 10; border: 1px solid #00f2ff;
+      text-align: center; min-width: 200px;
+    }
+
+    .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
     button {
-      background: rgba(255,255,255,0.2); border: 1px solid #fff; color: #white;
-      padding: 10px 20px; border-radius: 20px; font-size: 12px; color: white;
+      background: rgba(255,255,255,0.15); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.3); color: white;
+      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-size: 14px;
     }
   </style>
 </head>
 <body>
 
-  <video id="video" playsinline muted></video>
+  <div class="status" id="status">SOLICITANDO CÁMARA...</div>
+  
+  <video id="video" playsinline muted autoplay></video>
   <canvas id="canvas"></canvas>
 
   <div class="ui">
-    <button id="btn-camera">🔄 Cámara</button>
-    <button id="btn-ghost">👻 Ghost</button>
+    <button id="btn-camera">🔄 Girar Cámara</button>
+    <button id="btn-ghost">👻 Modo Ghost</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d', { alpha: false }); // Optimización de contexto
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
     
-    let detector, isGhost = false, currentFacing = 'user';
+    let detector;
+    let isGhost = false;
+    let currentFacing = 'user';
     const COLORS = ['#00f2ff', '#39ff14', '#ff0055', '#ffea00'];
 
-    // Solo las conexiones vitales para ahorrar ciclos de CPU
     const VITAL_CONNECTIONS = [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
 
-    async function init() {
-      await tf.setBackend('webgl');
-      // Pre-compilación de shaders para evitar el lag inicial
-      await tf.ready();
-      
-      await setupCamera();
-      
-      detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet, 
-        {
-          modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-          enableSmoothing: false, // Desactivado para ganar velocidad
-          multiPoseMaxDimension: 160 // Resolución mínima para máxima fluidez
-        }
-      );
-      
-      render();
+    async function startApp() {
+      try {
+        // 1. Primero encender la cámara (para evitar pantalla negra)
+        await setupCamera();
+        statusEl.innerText = "CARGANDO IA OPTIMIZADA...";
+
+        // 2. Configurar el motor de IA
+        await tf.setBackend('webgl');
+        await tf.ready();
+        
+        detector = await poseDetection.createDetector(
+          poseDetection.SupportedModels.MoveNet, 
+          {
+            modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+            enableSmoothing: true,
+            multiPoseMaxDimension: 192 // Resolución balanceada para evitar lag
+          }
+        );
+        
+        statusEl.innerText = "SISTEMA ACTIVO (4 PERSONAS)";
+        render();
+      } catch (err) {
+        statusEl.innerText = "ERROR: " + err.message;
+        console.error(err);
+      }
     }
 
     async function setupCamera() {
-      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
-      const stream = await navigator.mediaDevices.getUserMedia({
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+      }
+
+      const constraints = {
         video: { 
-            facingMode: currentFacing, 
-            width: { ideal: 480 }, // Resolución de entrada baja
-            height: { ideal: 360 } 
+          facingMode: currentFacing,
+          width: { ideal: 640 },
+          height: { ideal: 480 }
         }
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
+      
+      // Aplicar espejo solo en cámara frontal
       video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-      await video.play();
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve();
+        };
+      });
     }
 
     async function render() {
-      // tf.tidy limpia automáticamente la memoria de la GPU
-      await tf.tidy(async () => {
-        if (detector && video.readyState === 4) {
-          const poses = await detector.estimatePoses(video, { maxPoses: 4 });
-          
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          if (isGhost) { ctx.fillStyle = "black"; ctx.fillRect(0,0,canvas.width,canvas.height); }
-
-          ctx.save();
-          if (currentFacing === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-
-          for (let i = 0; i < poses.length; i++) {
-            if (poses[i].score > 0.2) drawSimplePose(poses[i], COLORS[i]);
-          }
-          ctx.restore();
+      if (detector && video.readyState >= 2) {
+        const poses = await detector.estimatePoses(video, { maxPoses: 4 });
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.save();
+        // Sincronizar espejo del canvas con el video
+        if (currentFacing === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
         }
-      });
-      
-      // setTimeout a 0 permite que el navegador respire entre frames
-      setTimeout(() => requestAnimationFrame(render), 0);
+
+        if (isGhost) {
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        poses.forEach((pose, index) => {
+          if (pose.score > 0.2) {
+            drawSkeleton(pose, COLORS[index % COLORS.length]);
+          }
+        });
+        ctx.restore();
+      }
+      requestAnimationFrame(render);
     }
 
-    function drawSimplePose(pose, color) {
+    function drawSkeleton(pose, color) {
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
       
-      // Dibujar solo líneas, no puntos (el dibujo de círculos es lento)
+      // Resplandor ligero (solo el necesario para fluidez)
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = color;
+
       VITAL_CONNECTIONS.forEach(([i, j]) => {
         const p1 = pose.keypoints[i];
         const p2 = pose.keypoints[j];
@@ -115,22 +158,31 @@
         }
       });
 
-      // Dibujar un pequeño cuadrado para la cabeza (más rápido que un círculo)
-      const head = pose.keypoints[0];
-      if (head.score > 0.3) {
+      // Dibujar cabeza (puntos 0 a 4 combinados)
+      const nose = pose.keypoints[0];
+      if (nose.score > 0.3) {
+        ctx.shadowBlur = 0;
         ctx.fillStyle = "white";
-        ctx.fillRect(head.x - 2, head.y - 2, 4, 4);
+        ctx.beginPath();
+        ctx.arc(nose.x, nose.y, 5, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
     document.getElementById('btn-camera').onclick = async () => {
       currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
+      statusEl.innerText = "CAMBIANDO CÁMARA...";
       await setupCamera();
+      statusEl.innerText = "SISTEMA ACTIVO";
     };
 
-    document.getElementById('btn-ghost').onclick = () => isGhost = !isGhost;
+    document.getElementById('btn-ghost').onclick = function() {
+      isGhost = !isGhost;
+      video.style.opacity = isGhost ? "0" : "1";
+    };
 
-    init();
+    // Iniciar la aplicación
+    startApp();
   </script>
 </body>
 </html>
