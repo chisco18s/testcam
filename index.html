@@ -55,6 +55,26 @@
       font-size: 14px;
       color: #4cc9f0;
     }
+    .controls {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      align-items: center;
+    }
+    .controls button {
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .controls button.active {
+      box-shadow: 0 0 10px rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.12);
+    }
     .keypoint {
       position: absolute;
       width: 12px;
@@ -82,6 +102,13 @@
     
     <div class="instructions">Apunta tu cámara a una persona. Aleja ~2 metros.</div>
     <div class="ui">
+      <div class="controls">
+        <button id="switchCamera">Cambiar cámara</button>
+        <button class="filter-btn active" data-filter="none">Sin filtro</button>
+        <button class="filter-btn" data-filter="red">Rojo</button>
+        <button class="filter-btn" data-filter="green">Verde</button>
+        <button class="filter-btn" data-filter="blue">Azul</button>
+      </div>
       <div class="status" id="status">Iniciando IA...</div>
     </div>
   </div>
@@ -98,21 +125,30 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
+    const switchBtn = document.getElementById('switchCamera');
+    const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+
+    let currentFilter = 'none';
+    let currentFacing = 'user';
 
     let pose;
     let isReady = false;
 
     // Inicializar cámara
-    async function setupCamera() {
+    async function setupCamera(facing = 'user') {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' }, // Usa cámara frontal por defecto
+        video: { facingMode: facing },
         audio: false
       });
+      // Detener cualquier stream anterior
+      if (video.srcObject) {
+        const oldStream = video.srcObject;
+        oldStream.getTracks().forEach(t => t.stop());
+      }
       video.srcObject = stream;
       
       return new Promise((resolve) => {
         video.onloadedmetadata = () => {
-          // Ajustar canvas al tamaño real del video
           video.play();
           resolve();
         };
@@ -273,6 +309,36 @@
       return torsoLen < legLen * 0.6;
     }
 
+    // Aplicar filtro de color sobre el canvas (tinta sobre el video)
+    function applyFilter() {
+      if (!currentFilter || currentFilter === 'none') return;
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      let color = '#000000';
+      if (currentFilter === 'red') color = '#ff0000';
+      if (currentFilter === 'green') color = '#00ff00';
+      if (currentFilter === 'blue') color = '#007bff';
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    async function switchCamera() {
+      currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+      try {
+        await setupCamera(currentFacing);
+        statusEl.textContent = `✅ Cámara: ${currentFacing}`;
+      } catch (e) {
+        statusEl.textContent = '❌ Error cámara: ' + e.message;
+        console.error(e);
+      }
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      filterButtons.forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+    }
+
     // Bucle principal
     async function detectLoop() {
       if (isReady && video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -284,7 +350,13 @@
     // Iniciar todo
     async function init() {
       try {
-        await setupCamera();
+        await setupCamera(currentFacing);
+        // Event listeners for UI
+        switchBtn.addEventListener('click', switchCamera);
+        filterButtons.forEach(btn => {
+          btn.addEventListener('click', () => setFilter(btn.dataset.filter));
+        });
+        setFilter('none');
         setupPose();
         detectLoop();
       } catch (e) {
