@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>MobileKinect Pro — Body Tracking</title>
+  <title>FitVision Pro — Entrenador IA</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏋️</text></svg>">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -13,10 +14,18 @@
       overflow: hidden;
       touch-action: none;
     }
-    .container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+    .container { 
+      position: relative; 
+      width: 100vw; 
+      height: 100vh; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+    }
     #video {
       position: absolute;
-      width: 100%; height: 100%;
+      width: 100%; 
+      height: 100%;
       object-fit: cover;
       transform: scaleX(-1);
       opacity: 1;
@@ -24,120 +33,253 @@
     }
     #canvas {
       position: absolute;
-      width: 100%; height: 100%;
+      width: 100%; 
+      height: 100%;
       z-index: 5;
     }
+    
     /* UI Overlay */
     .ui-panel {
       position: absolute;
       bottom: 30px;
-      width: 90%;
-      max-width: 500px;
-      background: rgba(15, 15, 25, 0.85);
-      backdrop-filter: blur(10px);
-      padding: 20px;
-      border-radius: 24px;
-      border: 1px solid rgba(255,255,255,0.1);
+      width: 92%;
+      max-width: 520px;
+      background: rgba(15, 15, 25, 0.92);
+      backdrop-filter: blur(12px);
+      padding: 22px;
+      border-radius: 26px;
+      border: 1px solid rgba(76, 201, 240, 0.2);
       z-index: 100;
       text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     }
+    
+    .header {
+      margin-bottom: 18px;
+      font-weight: bold;
+      color: #4cc9f0;
+      font-size: 18px;
+    }
+    
     .stats-container {
-      display: flex;
-      justify-content: space-around;
-      margin-bottom: 15px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
     }
-    .stat-box { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; min-width: 80px; }
-    .stat-val { display: block; font-size: 20px; font-weight: bold; color: #4cc9f0; }
-    .stat-label { font-size: 10px; text-transform: uppercase; opacity: 0.7; }
-
-    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    button {
-      background: rgba(255,255,255,0.1);
-      border: none; color: white; padding: 10px 5px;
-      border-radius: 10px; font-size: 12px; cursor: pointer;
+    
+    .stat-box {
+      background: rgba(255,255,255,0.06);
+      padding: 14px 8px;
+      border-radius: 16px;
+      min-height: 70px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
       transition: all 0.2s;
     }
-    button:active { transform: scale(0.95); background: #4cc9f0; }
-    button.active { background: #4361ee; box-shadow: 0 0 15px rgba(67, 97, 238, 0.5); }
+    
+    .stat-box.active {
+      background: rgba(76, 201, 240, 0.15);
+      border: 1px solid rgba(76, 201, 240, 0.4);
+    }
+    
+    .stat-val {
+      display: block;
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      background: linear-gradient(90deg, #4cc9f0, #4361ee);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      letter-spacing: 0.5px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    
+    button {
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: white;
+      padding: 12px 5px;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    button i {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+    
+    button:active {
+      transform: scale(0.96);
+      background: rgba(76, 201, 240, 0.3);
+    }
+    
+    button.active {
+      background: rgba(76, 201, 240, 0.25);
+      box-shadow: 0 0 12px rgba(76, 201, 240, 0.4);
+    }
     
     .instruction-tag {
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px;
-      font-size: 13px; z-index: 10; border: 1px solid #4cc9f0;
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 8px 20px;
+      border-radius: 30px;
+      font-size: 14px;
+      z-index: 10;
+      border: 1px solid #4cc9f0;
+      backdrop-filter: blur(8px);
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(76, 201, 240, 0); }
+    }
+    
+    .exercise-indicator {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 16px;
+      z-index: 20;
+      border: 2px solid #4cc9f0;
     }
   </style>
+  
+  <!-- Íconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
 
   <div class="container">
-    <div class="instruction-tag" id="hint">Cargando IA...</div>
+    <div class="instruction-tag" id="hint">Iniciando sistema de visión...</div>
+    <div class="exercise-indicator" id="exerciseIndicator">Esperando ejercicio</div>
+    
     <video id="video" playsinline muted></video>
     <canvas id="canvas"></canvas>
     
     <div class="ui-panel">
+      <div class="header">ENTRENADOR IA EN TIEMPO REAL</div>
+      
       <div class="stats-container">
-        <div class="stat-box">
+        <div class="stat-box" id="squatBox">
           <span class="stat-val" id="count-val">0</span>
           <span class="stat-label">Sentadillas</span>
         </div>
-        <div class="stat-box">
-          <span class="stat-val" id="pose-name">Buscando...</span>
-          <span class="stat-label">Estado</span>
+        <div class="stat-box" id="pushupBox">
+          <span class="stat-val" id="pushupCount">0</span>
+          <span class="stat-label">Flexiones</span>
+        </div>
+        <div class="stat-box" id="angleBox">
+          <span class="stat-val" id="kneeAngle">--°</span>
+          <span class="stat-label">Ángulo Rodilla</span>
         </div>
       </div>
 
       <div class="controls">
-        <button id="btn-camera">🔄 Cámara</button>
-        <button id="btn-ghost">👻 Modo Ghost</button>
-        <button id="btn-snap">📸 Captura</button>
-        <button class="filter-btn" data-filter="red">🔴 Rojo</button>
-        <button class="filter-btn" data-filter="cyan">🔵 Cyan</button>
-        <button class="filter-btn" data-filter="none">⚪ Reset</button>
+        <button id="btn-camera"><i class="fas fa-sync"></i> Cámara</button>
+        <button id="btn-ghost"><i class="fas fa-ghost"></i> Fantasma</button>
+        <button id="btn-snap"><i class="fas fa-camera"></i> Capturar</button>
+        <button id="btn-mode"><i class="fas fa-eye"></i> Vista</button>
+        <button class="filter-btn" data-filter="green"><i class="fas fa-circle" style="color:#4ade80;"></i> Verde</button>
+        <button class="filter-btn" data-filter="blue"><i class="fas fa-circle" style="color:#4cc9f0;"></i> Azul</button>
+        <button class="filter-btn" data-filter="red"><i class="fas fa-circle" style="color:#ff6b6b;"></i> Rojo</button>
+        <button id="btn-reset"><i class="fas fa-redo"></i> Reset</button>
       </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <!-- Librerías CORRECTAS (sin espacios) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1633539687/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.16.0/dist/tf-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.16.0/dist/tf-backend-webgl.min.js"></script>
 
   <script>
+    // Elementos DOM
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const poseNameEl = document.getElementById('pose-name');
+    const poseNameEl = document.getElementById('exerciseIndicator');
     const countEl = document.getElementById('count-val');
+    const pushupCountEl = document.getElementById('pushupCount');
+    const kneeAngleEl = document.getElementById('kneeAngle');
+    const hintEl = document.getElementById('hint');
     
+    // Estado
     let currentFacing = 'user';
     let isGhostMode = false;
     let colorTheme = '#4ade80';
     let squatCount = 0;
-    let isDown = false;
+    let pushupCount = 0;
+    let isSquatDown = false;
+    let isPushupDown = false;
+    let currentViewMode = 'skeleton'; // skeleton, points, silhouette
+    let lastFrameTime = 0;
+    const FPS = 15; // Control de FPS para ahorrar batería
 
-    // Conexiones de esqueleto (MediaPipe)
+    // Conexiones del esqueleto
     const POSE_CONNECTIONS = [
-      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Brazos
-      [11, 23], [12, 24], [23, 24], // Torso
-      [23, 25], [24, 26], [25, 27], [26, 28] // Piernas
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [25, 27], [24, 26], [26, 28]
     ];
 
+    // Colores por vista
+    const VIEW_COLORS = {
+      skeleton: { line: '#4ade80', point: '#ffffff' },
+      points: { line: 'transparent', point: '#ff6b6b' },
+      silhouette: { line: '#4cc9f0', point: '#4cc9f0' }
+    };
+
+    // Inicializar cámara
     async function setupCamera() {
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: 640, height: 480 },
+        video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false
       });
       video.srcObject = stream;
-      return new Promise(resolve => video.onloadedmetadata = () => {
-        video.play();
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        resolve();
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          video.play();
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          resolve();
+        };
       });
     }
 
+    // Inicializar MediaPipe Pose
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
@@ -151,11 +293,136 @@
 
     pose.onResults(onResults);
 
+    // Calcular ángulo entre tres puntos
+    function calculateAngle(a, b, c) {
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs(radians * 180.0 / Math.PI);
+      if (angle > 180) angle = 360 - angle;
+      return Math.round(angle);
+    }
+
+    // Analizar postura y ejercicios
+    function analyzePose(landmarks) {
+      // Verificar puntos clave
+      if (!landmarks[11] || !landmarks[12] || !landmarks[23] || !landmarks[24] || 
+          !landmarks[25] || !landmarks[26] || !landmarks[27] || !landmarks[28]) {
+        poseNameEl.textContent = "Postura no clara";
+        return;
+      }
+
+      // Ángulo de rodilla izquierda (cadera, rodilla, tobillo)
+      const leftKneeAngle = calculateAngle(landmarks[23], landmarks[25], landmarks[27]);
+      kneeAngleEl.textContent = `${leftKneeAngle}°`;
+
+      // Sentadillas (usando altura relativa de cadera vs hombros)
+      const leftHip = landmarks[23].y;
+      const leftShoulder = landmarks[11].y;
+      const hipShoulderRatio = (leftHip - leftShoulder) / (landmarks[27].y - leftHip);
+
+      if (hipShoulderRatio > 1.8 && !isSquatDown) {
+        isSquatDown = true;
+        poseNameEl.textContent = "SENTADILLA: Abajo";
+        poseNameEl.style.color = "#ff6b6b";
+        document.getElementById('squatBox').classList.add('active');
+      } else if (hipShoulderRatio < 1.2 && isSquatDown) {
+        isSquatDown = false;
+        squatCount++;
+        countEl.textContent = squatCount;
+        poseNameEl.textContent = "SENTADILLA: Arriba ✓";
+        poseNameEl.style.color = "#4ade80";
+        document.getElementById('squatBox').classList.remove('active');
+        setTimeout(() => poseNameEl.textContent = "Sentadilla detectada", 800);
+      }
+
+      // Flexiones (usando altura de hombros vs muñecas)
+      const leftWrist = landmarks[15].y;
+      const rightWrist = landmarks[16].y;
+      const avgWristY = (leftWrist + rightWrist) / 2;
+      const avgShoulderY = (landmarks[11].y + landmarks[12].y) / 2;
+      const pushupRatio = (avgShoulderY - avgWristY) / (landmarks[23].y - avgShoulderY);
+
+      if (pushupRatio > 0.8 && !isPushupDown) {
+        isPushupDown = true;
+        poseNameEl.textContent = "FLEXIÓN: Abajo";
+        document.getElementById('pushupBox').classList.add('active');
+      } else if (pushupRatio < 0.4 && isPushupDown) {
+        isPushupDown = false;
+        pushupCount++;
+        pushupCountEl.textContent = pushupCount;
+        poseNameEl.textContent = "FLEXIÓN: Arriba ✓";
+        document.getElementById('pushupBox').classList.remove('active');
+        setTimeout(() => poseNameEl.textContent = "Flexión detectada", 800);
+      }
+
+      // Postura neutra
+      if (!isSquatDown && !isPushupDown && 
+          hipShoulderRatio > 1.2 && hipShoulderRatio < 1.8 &&
+          pushupRatio < 0.8) {
+        poseNameEl.textContent = "De pie - Neutral";
+        poseNameEl.style.color = "#4cc9f0";
+      }
+    }
+
+    // Dibujar visualización
+    function drawVisuals(landmarks) {
+      const colors = VIEW_COLORS[currentViewMode];
+      
+      if (currentViewMode === 'silhouette') {
+        // Modo silueta: rellenar área aproximada
+        ctx.fillStyle = colorTheme + '40';
+        ctx.beginPath();
+        ctx.moveTo(landmarks[11].x * canvas.width, landmarks[11].y * canvas.height);
+        ctx.lineTo(landmarks[12].x * canvas.width, landmarks[12].y * canvas.height);
+        ctx.lineTo(landmarks[24].x * canvas.width, landmarks[24].y * canvas.height);
+        ctx.lineTo(landmarks[23].x * canvas.width, landmarks[23].y * canvas.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Dibujar conexiones
+      if (colors.line !== 'transparent') {
+        POSE_CONNECTIONS.forEach(([i, j]) => {
+          const start = landmarks[i];
+          const end = landmarks[j];
+          if (start.visibility > 0.5 && end.visibility > 0.5) {
+            ctx.beginPath();
+            ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+            ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = colorTheme;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = colorTheme;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
+        });
+      }
+
+      // Dibujar puntos
+      if (currentViewMode !== 'silhouette') {
+        landmarks.forEach((pt) => {
+          if (pt.visibility > 0.5) {
+            ctx.beginPath();
+            ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 
+                    currentViewMode === 'points' ? 8 : 5, 0, 2 * Math.PI);
+            ctx.fillStyle = currentViewMode === 'points' ? colorTheme : '#fff';
+            ctx.fill();
+          }
+        });
+      }
+    }
+
+    // Manejar resultados
     function onResults(results) {
-      ctx.save();
+      const now = performance.now();
+      if (now - lastFrameTime < 1000 / FPS) {
+        requestAnimationFrame(frameDetection);
+        return;
+      }
+      lastFrameTime = now;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Dibujar fondo si es modo ghost
       if (isGhostMode) {
         ctx.fillStyle = '#05050a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -164,61 +431,23 @@
       if (results.poseLandmarks) {
         drawVisuals(results.poseLandmarks);
         analyzePose(results.poseLandmarks);
-        document.getElementById('hint').textContent = "Cuerpo Detectado";
+        hintEl.textContent = "✅ Cuerpo detectado";
+        hintEl.style.animation = 'none';
+        setTimeout(() => hintEl.style.animation = 'pulse 2s infinite', 10);
       } else {
-        poseNameEl.textContent = "Buscando...";
-        document.getElementById('hint').textContent = "Aléjate un poco más";
+        poseNameEl.textContent = "Buscando persona...";
+        hintEl.textContent = "➡️ Aléjate 2-3 metros";
       }
-      ctx.restore();
-    }
-
-    function drawVisuals(landmarks) {
-      // Dibujar Conexiones
-      POSE_CONNECTIONS.forEach(([i, j]) => {
-        const start = landmarks[i];
-        const end = landmarks[j];
-        if (start.visibility > 0.5 && end.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-          ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = colorTheme;
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = colorTheme;
-          ctx.stroke();
-        }
-      });
-
-      // Dibujar Puntos Clave
-      landmarks.forEach((pt) => {
-        if (pt.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 5, 0, 2 * Math.PI);
-          ctx.fillStyle = "#fff";
-          ctx.fill();
-        }
-      });
-    }
-
-    function analyzePose(landmarks) {
-      const hip = landmarks[23].y;
-      const knee = landmarks[25].y;
-      const shoulder = landmarks[11].y;
-
-      // Lógica de Sentadilla
-      // En coordenadas normalizadas, mayor Y significa más abajo en pantalla
-      const dist = knee - hip;
       
-      if (dist < 0.12 && !isDown) { // Hip cerca de Knee (Bajando)
-        isDown = true;
-        poseNameEl.textContent = "¡ABAJO!";
-        poseNameEl.style.color = "#ff6b6b";
-      } else if (dist > 0.22 && isDown) { // Subiendo
-        isDown = false;
-        squatCount++;
-        countEl.textContent = squatCount;
-        poseNameEl.textContent = "¡ARRIBA!";
-        poseNameEl.style.color = "#4ade80";
+      requestAnimationFrame(frameDetection);
+    }
+
+    // Bucle principal
+    function frameDetection() {
+      if (video.readyState >= 2) {
+        pose.send({ image: video });
+      } else {
+        requestAnimationFrame(frameDetection);
       }
     }
 
@@ -227,40 +456,90 @@
       currentFacing = currentFacing === 'user' ? 'environment' : 'user';
       video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
       await setupCamera();
+      hintEl.textContent = `Cambiando a cámara ${currentFacing === 'user' ? 'frontal' : 'trasera'}...`;
     };
 
     document.getElementById('btn-ghost').onclick = function() {
       isGhostMode = !isGhostMode;
       this.classList.toggle('active');
       video.style.opacity = isGhostMode ? "0" : "1";
+      hintEl.textContent = isGhostMode ? "Modo fantasma activado" : "Video restaurado";
     };
 
     document.getElementById('btn-snap').onclick = () => {
+      // Crear captura con datos
+      const dataUrl = canvas.toDataURL();
       const link = document.createElement('a');
-      link.download = 'kinect-capture.png';
-      link.href = canvas.toDataURL();
+      link.download = `fitvision-capture-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.png`;
+      link.href = dataUrl;
       link.click();
+      
+      // Opcional: guardar datos de ejercicio
+      const exerciseData = {
+        timestamp: new Date().toISOString(),
+        squats: squatCount,
+        pushups: pushupCount,
+        lastAngle: kneeAngleEl.textContent
+      };
+      console.log("Datos de ejercicio:", exerciseData);
+      hintEl.textContent = "📸 Captura guardada";
+    };
+
+    document.getElementById('btn-mode').onclick = function() {
+      const modes = ['skeleton', 'points', 'silhouette'];
+      const currentIndex = modes.indexOf(currentViewMode);
+      currentViewMode = modes[(currentIndex + 1) % modes.length];
+      
+      const modeNames = { skeleton: 'Esqueleto', points: 'Puntos', silhouette: 'Silueta' };
+      hintEl.textContent = `Vista: ${modeNames[currentViewMode]}`;
+      this.innerHTML = `<i class="fas fa-eye"></i> ${modeNames[currentViewMode]}`;
     };
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.onclick = () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
         const f = btn.dataset.filter;
-        if(f === 'red') colorTheme = '#ff4d4d';
-        else if(f === 'cyan') colorTheme = '#4cc9f0';
+        if(f === 'red') colorTheme = '#ff6b6b';
+        else if(f === 'blue') colorTheme = '#4cc9f0';
         else colorTheme = '#4ade80';
+        
+        hintEl.textContent = `Color cambiado a ${f}`;
       };
     });
 
-    async function run() {
-      await setupCamera();
-      const frameDetection = async () => {
-        await pose.send({image: video});
-        requestAnimationFrame(frameDetection);
-      };
-      frameDetection();
+    document.getElementById('btn-reset').onclick = () => {
+      squatCount = 0;
+      pushupCount = 0;
+      isSquatDown = false;
+      isPushupDown = false;
+      countEl.textContent = '0';
+      pushupCountEl.textContent = '0';
+      kneeAngleEl.textContent = '--°';
+      poseNameEl.textContent = "Contadores reiniciados";
+      hintEl.textContent = "🔄 Estadísticas reseteadas";
+    };
+
+    // Iniciar aplicación
+    async function initApp() {
+      try {
+        hintEl.textContent = "Accediendo a la cámara...";
+        await setupCamera();
+        hintEl.textContent = "Cargando modelo de IA...";
+        await tf.setBackend('webgl');
+        await tf.ready();
+        hintEl.textContent = "Iniciando detección...";
+        frameDetection();
+      } catch (error) {
+        hintEl.textContent = "❌ Error: " + error.message;
+        console.error("Error de inicialización:", error);
+      }
     }
 
-    run();
+    // Iniciar cuando la página cargue
+    window.addEventListener('load', initApp);
   </script>
 </body>
 </html>
+
