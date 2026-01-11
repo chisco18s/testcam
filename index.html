@@ -3,164 +3,148 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>MobileKinect Pro — Multi-User Tracking</title>
+  <title>Kinect AI Multi-User Pro</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+    body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
     #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
     
-    .ui-top { position: absolute; top: 20px; width: 100%; display: flex; justify-content: center; z-index: 10; }
-    .status-bar {
-      background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 30px;
-      border: 1px solid #4cc9f0; color: #4cc9f0; font-weight: bold; font-size: 14px;
-      backdrop-filter: blur(10px);
-    }
-    .ui-bottom { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
+    .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; }
     button {
-      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+      background: rgba(255,255,255,0.15); backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-size: 14px;
+      padding: 12px 20px; border-radius: 50px; cursor: pointer;
     }
-    button:active { background: #4cc9f0; color: #000; }
+    .status {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px;
+      color: #00f2ff; font-weight: bold; z-index: 10; font-size: 12px;
+    }
   </style>
 </head>
 <body>
 
-  <div class="ui-top">
-    <div class="status-bar" id="status">BUSCANDO PERSONAS...</div>
-  </div>
-
+  <div class="status" id="status">INICIALIZANDO MULTI-POSE...</div>
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
 
-  <div class="ui-bottom">
-    <button id="btn-switch">🔄 Cámara</button>
+  <div class="ui">
+    <button id="btn-camera">🔄 Girar Cámara</button>
     <button id="btn-ghost">👻 Modo Ghost</button>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
     
+    let detector;
     let isGhost = false;
     let currentFacing = 'user';
-    let poseDetector;
+    const COLORS = ['#00f2ff', '#39ff14', '#ff0055', '#ffea00'];
 
-    // Colores para hasta 4 personas
-    const COLORS = ['#00f2ff', '#39ff14', '#bc13fe', '#ffea00'];
-
+    // Mapa de conexiones MoveNet (17 puntos clave)
     const CONNECTIONS = [
-      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Cabeza
-      [11,12], [11,13], [13,15], [12,14], [14,16], // Brazos
-      [11,23], [12,24], [23,24], // Torso
-      [23,25], [25,27], [24,26], [26,28] // Piernas
+      [0,1], [0,2], [1,3], [2,4], // Cabeza
+      [5,6], [5,7], [7,9], [6,8], [8,10], // Brazos
+      [5,11], [6,12], [11,12], // Torso
+      [11,13], [13,15], [12,14], [14,16] // Piernas
     ];
 
-    async function init() {
-      poseDetector = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    async function setupDetector() {
+      const model = poseDetection.SupportedModels.MoveNet;
+      detector = await poseDetection.createDetector(model, {
+        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+        enableSmoothing: true
       });
-
-      // IMPORTANTE: modelComplexity 0 es más rápido para múltiples personas en web
-      poseDetector.setOptions({
-        modelComplexity: 0, 
-        smoothLandmarks: true,
-        enableSegmentation: false,
-        smoothSegmentation: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-
-      poseDetector.onResults(onResults);
-      await startCamera();
-      
-      const detectFrame = async () => {
-        await poseDetector.send({ image: video });
-        video.requestVideoFrameCallback(detectFrame);
-      };
-      detectFrame();
+      statusEl.innerText = "KINECT MULTI-PERSONA LISTO";
+      startDetection();
     }
 
-    async function startCamera() {
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
-      }
+    async function setupCamera() {
+      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { facingMode: currentFacing, width: 640, height: 480 }
       });
       video.srcObject = stream;
       video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-      
-      video.onloadedmetadata = () => {
+      return new Promise(res => video.onloadedmetadata = () => {
         video.play();
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-      };
+        res();
+      });
     }
 
-    function onResults(results) {
+    async function startDetection() {
+      const poses = await detector.estimatePoses(video);
+      
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+      
+      // Espejo manual para el canvas si es cámara frontal
       if (currentFacing === 'user') {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
 
       if (isGhost) {
-        ctx.fillStyle = "#05050a";
+        ctx.fillStyle = "black";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Si MediaPipe detecta múltiples poses (en navegadores compatibles)
-      // de lo contrario, dibujará la pose principal con el color 1.
-      if (results.poseLandmarks) {
-          statusEl.innerText = "PERSONA(S) DETECTADA(S)";
-          // Dibujamos a la persona principal
-          drawSkeleton(results.poseLandmarks, COLORS[0]);
-      } else {
-          statusEl.innerText = "ESPERANDO PERSONAS...";
-      }
+      // Filtrar hasta 4 personas
+      poses.slice(0, 4).forEach((pose, index) => {
+        if (pose.score > 0.2) {
+          drawPose(pose, COLORS[index]);
+        }
+      });
       
       ctx.restore();
+      requestAnimationFrame(startDetection);
     }
 
-    function drawSkeleton(landmarks, color) {
-      ctx.lineWidth = 5;
+    function drawPose(pose, color) {
       ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
       ctx.shadowBlur = 10;
       ctx.shadowColor = color;
-      ctx.lineCap = "round";
 
-      CONNECTIONS.forEach(([a, b]) => {
-        const start = landmarks[a];
-        const end = landmarks[b];
-        if (start && end && start.visibility > 0.5 && end.visibility > 0.5) {
+      // Dibujar esqueleto
+      CONNECTIONS.forEach(([i, j]) => {
+        const p1 = pose.keypoints[i];
+        const p2 = pose.keypoints[j];
+        if (p1.score > 0.3 && p2.score > 0.3) {
           ctx.beginPath();
-          ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-          ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
         }
       });
 
-      // Cabeza y puntos
-      landmarks.forEach((p, i) => {
-        if (p.visibility > 0.5) {
+      // Dibujar articulaciones
+      ctx.shadowBlur = 0;
+      pose.keypoints.forEach(kp => {
+        if (kp.score > 0.3) {
           ctx.beginPath();
-          ctx.arc(p.x * canvas.width, p.y * canvas.height, i < 11 ? 3 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = "#fff";
+          ctx.arc(kp.x, kp.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
           ctx.fill();
         }
       });
     }
 
-    document.getElementById('btn-switch').onclick = () => {
+    document.getElementById('btn-camera').onclick = async () => {
       currentFacing = currentFacing === 'user' ? 'environment' : 'user';
-      startCamera();
+      await setupCamera();
     };
 
     document.getElementById('btn-ghost').onclick = function() {
@@ -168,7 +152,10 @@
       video.style.opacity = isGhost ? "0" : "1";
     };
 
-    init();
+    window.onload = async () => {
+      await setupCamera();
+      await setupDetector();
+    };
   </script>
 </body>
 </html>
