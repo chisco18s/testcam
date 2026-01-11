@@ -3,194 +3,252 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect AI Pro — Ultra Flow</title>
+  <title>MobileKinect Pro — Ultra Tracking</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
-    
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-
-    /* HUD Superior */
-    .hud-top {
-      position: absolute; top: 20px; width: 100%;
-      display: flex; justify-content: space-between; padding: 0 25px;
-      z-index: 20;
+    body {
+      background: #05050a; color: white;
+      font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none;
     }
-    .metric { background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 15px; border-left: 4px solid #00f2ff; }
-    .metric span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-    .metric b { font-size: 20px; color: #00f2ff; }
-
-    /* Panel de Control */
-    .controls {
-      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 15px; z-index: 20;
+    .container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+    #video {
+      position: absolute; width: 100%; height: 100%; object-fit: cover;
+      transform: scaleX(-1); transition: opacity 0.3s;
     }
+    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; }
+
+    /* HUD de Estadísticas */
+    .ui-panel {
+      position: absolute; bottom: 30px; width: 90%; max-width: 500px;
+      background: rgba(15, 15, 25, 0.85); backdrop-filter: blur(10px);
+      padding: 20px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1);
+      z-index: 100; text-align: center;
+    }
+    .stats-container { display: flex; justify-content: space-around; margin-bottom: 15px; }
+    .stat-box { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; min-width: 80px; border-bottom: 2px solid #4cc9f0; }
+    .stat-val { display: block; font-size: 20px; font-weight: bold; color: #4cc9f0; }
+    .stat-label { font-size: 10px; text-transform: uppercase; opacity: 0.7; }
+
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     button {
-      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2); color: white;
-      padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold;
+      background: rgba(255,255,255,0.1); border: none; color: white; padding: 12px 5px;
+      border-radius: 12px; font-size: 12px; cursor: pointer; transition: all 0.2s; font-weight: bold;
     }
-    button:active { background: #00f2ff; color: #000; }
-
-    /* Animación de golpe */
-    @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
-    .hit-effect {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: white; opacity: 0; pointer-events: none; z-index: 5;
+    button:active { transform: scale(0.9); background: #4cc9f0; color: #000; }
+    button.active { background: #4361ee; box-shadow: 0 0 15px rgba(67, 97, 238, 0.5); }
+    
+    .instruction-tag {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px;
+      font-size: 14px; z-index: 10; border: 1px solid #4cc9f0; color: #4cc9f0;
     }
   </style>
 </head>
 <body>
 
-  <div id="flash" class="hit-effect"></div>
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
+  <div class="container">
+    <div class="instruction-tag" id="hint">Iniciando Sensores...</div>
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    
+    <div class="ui-panel">
+      <div class="stats-container">
+        <div class="stat-box">
+          <span class="stat-val" id="count-val">0</span>
+          <span class="stat-label">Sentadillas</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="punch-val">0</span>
+          <span class="stat-label">Golpes</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="pose-name">Buscando</span>
+          <span class="stat-label">Gesto</span>
+        </div>
+      </div>
 
-  <div class="hud-top">
-    <div class="metric"><span>Movimiento</span><b id="gesture-txt">Buscando...</b></div>
-    <div class="metric"><span>Puntos</span><b id="score-txt">0</b></div>
-  </div>
-
-  <div class="controls">
-    <button onclick="toggleGhost()">👻 Esqueleto</button>
-    <button onclick="switchCamera()">🔄 Girar</button>
-    <button onclick="resetScore()">🗑️ Reset</button>
+      <div class="controls">
+        <button id="btn-camera">🔄 Cámara</button>
+        <button id="btn-ghost">👻 Modo Ghost</button>
+        <button id="btn-reset">🗑️ Reiniciar</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const gestureTxt = document.getElementById('gesture-txt');
-    const scoreTxt = document.getElementById('score-txt');
-    const flash = document.getElementById('flash');
+    const poseNameEl = document.getElementById('pose-name');
+    const countEl = document.getElementById('count-val');
+    const punchEl = document.getElementById('punch-val');
+    
+    let currentFacing = 'user';
+    let isGhostMode = false;
+    let colorTheme = '#4cc9f0';
+    let squatCount = 0;
+    let punchCount = 0;
+    let isDown = false;
+    let lastHandY = 0;
 
-    let ghostMode = false;
-    let score = 0;
-    let lastPunchTime = 0;
-
-    // Configuración de conexiones (simplificada para fluidez)
-    const CONNECTIONS = [
-        [11,12], [11,13], [13,15], [12,14], [14,16], // Torso y brazos
-        [11,23], [12,24], [23,24], [23,25], [24,26]  // Caderas y rodillas
+    const POSE_CONNECTIONS = [
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [24, 26], [25, 27], [26, 28]
     ];
 
-    async function init() {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'user', width: 1280, height: 720 }, audio: false 
-        });
-        video.srcObject = stream;
+    async function setupCamera() {
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacing, width: 640, height: 480 },
+        audio: false
+      });
+      video.srcObject = stream;
+      return new Promise(resolve => video.onloadedmetadata = () => {
         video.play();
-
-        const pose = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
-
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7 });
-        pose.onResults(draw);
-
-        async function detect() {
-            await pose.send({image: video});
-            requestAnimationFrame(detect);
-        }
-        detect();
-    }
-
-    function draw(res) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (ghostMode) {
-            ctx.fillStyle = "black";
-            ctx.fillRect(0,0, canvas.width, canvas.height);
-        }
-
-        if (!res.poseLandmarks) {
-            gestureTxt.innerText = "Fuera de rango";
-            return;
-        }
-
-        // --- DIBUJO DE ESQUELETO ---
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = 5;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = "#00f2ff";
-        ctx.strokeStyle = "#00f2ff";
-
-        CONNECTIONS.forEach(([a, b]) => {
-            const p1 = res.poseLandmarks[a];
-            const p2 = res.poseLandmarks[b];
-            if (p1.visibility > 0.5 && p2.visibility > 0.5) {
-                ctx.beginPath();
-                ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
-                ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
-                ctx.stroke();
-            }
-        });
-
-        // Puntos de articulación
-        ctx.fillStyle = "#fff";
-        res.poseLandmarks.forEach((p, i) => {
-            if (p.visibility > 0.5 && i > 10) {
-                ctx.beginPath();
-                ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-
-        checkGestures(res.poseLandmarks);
+        resolve();
+      });
     }
 
-    function checkGestures(lm) {
-        const rWrist = lm[16], lWrist = lm[15], head = lm[0], rShoulder = lm[12];
-        
-        // 1. Gesto: Saludando (Mano sobre la cabeza)
-        if (rWrist.y < head.y || lWrist.y < head.y) {
-            updateGesture("HOLA 👋", "#00f2ff");
-        } 
-        // 2. Gesto: Guardia de Boxeo (Manos cerca de la cara)
-        else if (Math.abs(rWrist.x - head.x) < 0.1 && rWrist.y < rShoulder.y) {
-            updateGesture("GUARDIA 🥊", "#ffcc00");
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    pose.onResults(onResults);
+
+    function onResults(results) {
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      if (isGhostMode) {
+        ctx.fillStyle = '#05050a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (results.poseLandmarks) {
+        drawVisuals(results.poseLandmarks);
+        analyzeMovement(results.poseLandmarks);
+        document.getElementById('hint').textContent = "Sistema Activo";
+      } else {
+        document.getElementById('hint').textContent = "Buscando persona...";
+      }
+      ctx.restore();
+    }
+
+    function drawVisuals(landmarks) {
+      // Dibujar líneas de esqueleto con resplandor
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = colorTheme;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = colorTheme;
+
+      POSE_CONNECTIONS.forEach(([i, j]) => {
+        const s = landmarks[i];
+        const e = landmarks[j];
+        if (s.visibility > 0.6 && e.visibility > 0.6) {
+          ctx.beginPath();
+          ctx.moveTo(s.x * canvas.width, s.y * canvas.height);
+          ctx.lineTo(e.x * canvas.width, e.y * canvas.height);
+          ctx.stroke();
         }
-        else {
-            updateGesture("IDLE", "#fff");
+      });
+
+      // Dibujar puntos clave
+      ctx.shadowBlur = 0;
+      landmarks.forEach((pt, index) => {
+        if (pt.visibility > 0.6 && index > 10) {
+          ctx.beginPath();
+          ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
         }
-
-        // 3. Función: Detección de Golpe (Punch)
-        // Detecta una aceleración rápida de la mano hacia adelante
-        const punchSpeed = Math.abs(rWrist.z); 
-        if (punchSpeed > 1.2 && (Date.now() - lastPunchTime > 500)) {
-            triggerPunch();
-        }
+      });
     }
 
-    function updateGesture(txt, color) {
-        gestureTxt.innerText = txt;
-        gestureTxt.style.color = color;
+    function analyzeMovement(lm) {
+      // 1. Lógica de Sentadilla
+      const hipY = (lm[23].y + lm[24].y) / 2;
+      const kneeY = (lm[25].y + lm[26].y) / 2;
+      const diff = kneeY - hipY;
+
+      if (diff < 0.12 && !isDown) {
+        isDown = true;
+      } else if (diff > 0.22 && isDown) {
+        isDown = false;
+        squatCount++;
+        countEl.textContent = squatCount;
+      }
+
+      // 2. Lógica de Golpes (Punch)
+      const rWrist = lm[16];
+      const rShoulder = lm[12];
+      // Si la muñeca se mueve rápido hacia adelante (eje Z o cambio brusco en X)
+      if (rWrist.visibility > 0.8 && rWrist.y < rShoulder.y && Math.abs(rWrist.z) > 1.2) {
+         if (Date.now() - lastHandY > 500) { // Anti-rebote
+            punchCount++;
+            punchEl.textContent = punchCount;
+            lastHandY = Date.now();
+         }
+      }
+
+      // 3. Reconocimiento de Gestos
+      const lWrist = lm[15];
+      const nose = lm[0];
+      if (lWrist.y < nose.y || rWrist.y < nose.y) {
+        poseNameEl.textContent = "HOLA 👋";
+        poseNameEl.style.color = "#4ade80";
+      } else if (diff < 0.12) {
+        poseNameEl.textContent = "ABAJO";
+        poseNameEl.style.color = "#ff6b6b";
+      } else {
+        poseNameEl.textContent = "IDLE";
+        poseNameEl.style.color = "#4cc9f0";
+      }
     }
 
-    function triggerPunch() {
-        score += 10;
-        scoreTxt.innerText = score;
-        lastPunchTime = Date.now();
-        flash.style.animation = "none";
-        void flash.offsetWidth; // Reiniciar animación
-        flash.style.animation = "flash 0.2s ease-out";
+    // Botones
+    document.getElementById('btn-camera').onclick = async () => {
+      currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+      video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+      await setupCamera();
+    };
+
+    document.getElementById('btn-ghost').onclick = function() {
+      isGhostMode = !isGhostMode;
+      this.classList.toggle('active');
+      video.style.opacity = isGhostMode ? "0" : "1";
+    };
+
+    document.getElementById('btn-reset').onclick = () => {
+      squatCount = 0; punchCount = 0;
+      countEl.textContent = "0"; punchEl.textContent = "0";
+    };
+
+    async function run() {
+      await setupCamera();
+      const frameDetection = async () => {
+        await pose.send({image: video});
+        requestAnimationFrame(frameDetection);
+      };
+      frameDetection();
     }
 
-    function toggleGhost() { ghostMode = !ghostMode; video.style.opacity = ghostMode ? 0 : 1; }
-    function resetScore() { score = 0; scoreTxt.innerText = score; }
-    async function switchCamera() {
-        const mode = video.getAttribute('data-mode') === 'user' ? 'environment' : 'user';
-        video.setAttribute('data-mode', mode);
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
-        video.srcObject = stream;
-    }
-
-    init();
+    run();
   </script>
 </body>
 </html>
