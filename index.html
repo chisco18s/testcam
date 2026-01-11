@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro Multi-User — Camera Fix</title>
+  <title>Kinect Pro — Single Player</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
@@ -26,7 +26,7 @@
 </head>
 <body>
 
-  <div class="status" id="status">INICIALIZANDO SISTEMA...</div>
+  <div class="status" id="status">INICIALIZANDO KINECT...</div>
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
 
@@ -35,10 +35,7 @@
     <button id="btn-ghost">👻 Modo Ghost</button>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
 
   <script>
     const video = document.getElementById('video');
@@ -46,121 +43,128 @@
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
     
-    let detector;
+    let poseDetector;
     let isGhost = false;
     let currentFacing = 'user';
-    const COLORS = ['#00f2ff', '#39ff14', '#ff0055', '#ffea00'];
 
+    // Conexiones completas incluyendo rostro
     const CONNECTIONS = [
-      [0,1], [0,2], [1,3], [2,4], // Cabeza
-      [5,6], [5,7], [7,9], [6,8], [8,10], // Brazos
-      [5,11], [6,12], [11,12], // Torso
-      [11,13], [13,15], [12,14], [14,16] // Piernas
+      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Rostro/Cabeza
+      [11,12], [11,13], [13,15], [12,14], [14,16], // Brazos
+      [11,23], [12,24], [23,24], // Torso
+      [23,25], [25,27], [24,26], [26,28]  // Piernas
     ];
 
     async function init() {
-      // 1. Configurar Cámara primero
+      poseDetector = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+
+      poseDetector.setOptions({
+        modelComplexity: 0, // 0 es el modo más rápido, ideal para Honor 400 Lite
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      poseDetector.onResults(onResults);
+      
       await setupCamera();
       
-      // 2. Configurar Detector
-      const model = poseDetection.SupportedModels.MoveNet;
-      detector = await poseDetection.createDetector(model, {
-        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-        enableSmoothing: true
-      });
-      
-      statusEl.innerText = "KINECT MULTI-PERSONA ACTIVO";
-      renderLoop();
+      // Ciclo de detección optimizado
+      const frameLoop = async () => {
+        if (video.readyState >= 2) {
+          await poseDetector.send({ image: video });
+        }
+        requestAnimationFrame(frameLoop);
+      };
+      frameLoop();
     }
 
     async function setupCamera() {
-      // Detener tracks anteriores para liberar la cámara
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(t => t.stop());
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      
-      video.srcObject = stream;
-      video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-      
-      return new Promise(res => {
-        video.onloadedmetadata = () => {
-          video.play();
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          res();
-        };
-      });
-    }
-
-    async function renderLoop() {
-      if (detector && video.readyState >= 2) {
-        const poses = await detector.estimatePoses(video);
-        
-        ctx.save();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        if (currentFacing === 'user') {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-        }
-
-        if (isGhost) {
-          ctx.fillStyle = "black";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-
-        // Dibujar hasta 4 personas si existen
-        poses.slice(0, 4).forEach((pose, index) => {
-          if (pose.score > 0.25) {
-            drawSkeleton(pose, COLORS[index]);
-          }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
         });
         
-        ctx.restore();
+        video.srcObject = stream;
+        // Inversión visual de la cámara
+        video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+        
+        return new Promise(res => {
+          video.onloadedmetadata = () => {
+            video.play();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            statusEl.innerText = "SISTEMA ACTIVO";
+            res();
+          };
+        });
+      } catch (e) {
+        statusEl.innerText = "ERROR DE CÁMARA";
       }
-      requestAnimationFrame(renderLoop);
     }
 
-    function drawSkeleton(pose, color) {
-      ctx.strokeStyle = color;
+    function onResults(results) {
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Inversión del esqueleto para que coincida con la cámara frontal
+      if (currentFacing === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      if (isGhost) {
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (results.poseLandmarks) {
+        drawSkeleton(results.poseLandmarks);
+      }
+      ctx.restore();
+    }
+
+    function drawSkeleton(landmarks) {
+      ctx.strokeStyle = "#00f2ff";
       ctx.lineWidth = 5;
       ctx.lineCap = "round";
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = "#00f2ff";
 
-      CONNECTIONS.forEach(([i, j]) => {
-        const kp1 = pose.keypoints[i];
-        const kp2 = pose.keypoints[j];
-        if (kp1.score > 0.3 && kp2.score > 0.3) {
+      // Huesos
+      CONNECTIONS.forEach(([a, b]) => {
+        const p1 = landmarks[a];
+        const p2 = landmarks[b];
+        if (p1.visibility > 0.5 && p2.visibility > 0.5) {
           ctx.beginPath();
-          ctx.moveTo(kp1.x, kp1.y);
-          ctx.lineTo(kp2.x, kp2.y);
+          ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+          ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
           ctx.stroke();
         }
       });
 
-      // Cabeza y puntos clave
+      // Puntos
       ctx.shadowBlur = 0;
-      pose.keypoints.forEach((kp, i) => {
-        if (kp.score > 0.3) {
+      landmarks.forEach((p, i) => {
+        if (p.visibility > 0.5) {
           ctx.beginPath();
-          ctx.arc(kp.x, kp.y, i < 5 ? 3 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = "white";
+          ctx.arc(p.x * canvas.width, p.y * canvas.height, i < 11 ? 3 : 5, 0, Math.PI * 2);
+          ctx.fillStyle = i < 11 ? "white" : "#00f2ff";
           ctx.fill();
         }
       });
     }
 
-    // BOTONES REVISADOS
     document.getElementById('btn-camera').onclick = async () => {
       currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
-      statusEl.innerText = "RECONECTANDO CÁMARA...";
+      statusEl.innerText = "CAMBIANDO CÁMARA...";
       await setupCamera();
-      statusEl.innerText = "KINECT MULTI-PERSONA ACTIVO";
     };
 
     document.getElementById('btn-ghost').onclick = function() {
