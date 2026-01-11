@@ -61,6 +61,7 @@
       gap: 8px;
       justify-content: center;
       align-items: center;
+      flex-wrap: wrap;
     }
     .controls button {
       background: rgba(255,255,255,0.06);
@@ -70,27 +71,11 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 14px;
+      min-width: 80px;
     }
     .controls button.active {
       box-shadow: 0 0 10px rgba(255,255,255,0.06);
       background: rgba(255,255,255,0.12);
-    }
-    .keypoint {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      background: #ff6b6b;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 5;
-      box-shadow: 0 0 8px #ff6b6b;
-    }
-    .connection {
-      position: absolute;
-      height: 2px;
-      background: #4ade80;
-      transform-origin: 0 0;
-      z-index: 4;
     }
   </style>
 </head>
@@ -113,7 +98,7 @@
     </div>
   </div>
 
-  <!-- Cargar TensorFlow.js y MediaPipe -->
+  <!-- Cargar TensorFlow.js y MediaPipe SIN ESPACIOS -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
@@ -164,7 +149,7 @@
       });
 
       pose.setOptions({
-        modelComplexity: 1, // 0, 1 o 2 (1 = equilibrio velocidad/precisión)
+        modelComplexity: 1,
         smoothLandmarks: true,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
@@ -177,12 +162,18 @@
 
     // Procesar resultados
     function onResults(results) {
+      // Ajustar canvas al tamaño del video
+      const displayWidth = video.videoWidth;
+      const displayHeight = video.videoHeight;
+      if (displayWidth > 0 && displayHeight > 0) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
+      }
+
       // Limpiar canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (results.poseLandmarks) {
-        statusEl.textContent = "🟢 Persona detectada";
-        
         // Dibujar puntos clave
         drawKeypoints(results.poseLandmarks, 0.5, ctx);
         
@@ -194,35 +185,33 @@
         const rightRaised = isHandRaised(results.poseLandmarks, 'right', 0.5);
         const crouched = isCrouching(results.poseLandmarks, 0.5);
 
+        let gestureText = "🟢 Persona detectada";
         if (crouched) {
-          statusEl.textContent = "⬇️ Agachado";
+          gestureText = "⬇️ Agachado";
         } else if (leftRaised && rightRaised) {
-          statusEl.textContent = "🖐️ Ambas manos levantadas";
+          gestureText = "🖐️ Ambas manos levantadas";
         } else if (leftRaised) {
-          statusEl.textContent = "🖐️ Mano izquierda levantada";
+          gestureText = "🖐️ Mano izquierda levantada";
         } else if (rightRaised) {
-          statusEl.textContent = "🖐️ Mano derecha levantada";
+          gestureText = "🖐️ Mano derecha levantada";
         }
-
-        // Mostrar etiqueta en canvas (esquina superior izquierda)
-        drawLabel(statusEl.textContent, 12, 28);
+        statusEl.textContent = gestureText;
+        drawLabel(gestureText, 12, 28);
 
       } else {
         statusEl.textContent = "🔍 Esperando persona...";
       }
+
+      // Aplicar filtro de color SOBRE el canvas (después de dibujar)
+      applyFilter();
     }
 
     // Dibujar puntos
     function drawKeypoints(landmarks, minConfidence, ctx) {
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      canvas.width = w;
-      canvas.height = h;
-      
-      landmarks.forEach((landmark, i) => {
+      landmarks.forEach((landmark) => {
         if (landmark.score > minConfidence) {
-          const x = landmark.x * w;
-          const y = landmark.y * h;
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
           
           ctx.beginPath();
           ctx.arc(x, y, 6, 0, 2 * Math.PI);
@@ -232,30 +221,27 @@
       });
     }
 
-    // Conexiones del cuerpo (como en Kinect)
+    // Conexiones del cuerpo
     const connections = [
-      [0, 1], [1, 2], [2, 3], [3, 7], // cara
+      [0, 1], [1, 2], [2, 3], [3, 7],
       [0, 4], [4, 5], [5, 6], [6, 8],
-      [9, 10], // hombros
-      [11, 12], [11, 13], [13, 15], // brazo izq
-      [12, 14], [14, 16], // brazo der
-      [11, 23], [12, 24], // torso
-      [23, 24], // cadera
-      [23, 25], [25, 27], [27, 29], [27, 31], // pierna izq
-      [24, 26], [26, 28], [28, 30], [28, 32]  // pierna der
+      [9, 10],
+      [11, 12], [11, 13], [13, 15],
+      [12, 14], [14, 16],
+      [11, 23], [12, 24],
+      [23, 24],
+      [23, 25], [25, 27], [27, 29], [27, 31],
+      [24, 26], [26, 28], [28, 30], [28, 32]
     ];
 
     function drawSkeleton(landmarks, minConfidence, ctx) {
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      
       connections.forEach(([i, j]) => {
         const a = landmarks[i];
         const b = landmarks[j];
         if (a.score > minConfidence && b.score > minConfidence) {
           ctx.beginPath();
-          ctx.moveTo(a.x * w, a.y * h);
-          ctx.lineTo(b.x * w, b.y * h);
+          ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
+          ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
           ctx.lineWidth = 3;
           ctx.strokeStyle = '#4ade80';
           ctx.stroke();
@@ -263,7 +249,7 @@
       });
     }
 
-    // Detección de gestos
+    // Dibujar etiqueta
     function drawLabel(text, x, y) {
       ctx.font = '20px Segoe UI, sans-serif';
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -276,6 +262,7 @@
       ctx.fillText(text, x + padding, y);
     }
 
+    // Detección de gestos
     function isHandRaised(landmarks, side = 'left', minConfidence = 0.5) {
       const wristIdx = side === 'left' ? 15 : 16;
       const shoulderIdx = side === 'left' ? 11 : 12;
@@ -283,7 +270,6 @@
       const shoulder = landmarks[shoulderIdx];
       if (!wrist || !shoulder) return false;
       if (wrist.score <= minConfidence || shoulder.score <= minConfidence) return false;
-      // En coordenadas de imagen y aumenta hacia abajo: mano levantada -> y(wrist) < y(shoulder)
       return wrist.y < shoulder.y - 0.05;
     }
 
@@ -305,35 +291,37 @@
       const torsoLen = Math.abs(hipY - shoulderY);
       const legLen = Math.abs(kneeY - hipY);
 
-      // Si el torso se ha acortado bastante respecto a la pierna, probablemente está agachado
       return torsoLen < legLen * 0.6;
     }
 
-    // Aplicar filtro de color sobre el canvas (tinta sobre el video)
+    // Aplicar filtro de color
     function applyFilter() {
-      if (!currentFilter || currentFilter === 'none') return;
+      if (currentFilter === 'none') return;
       ctx.save();
-      ctx.globalAlpha = 0.16;
+      ctx.globalCompositeOperation = 'source-atop';
       let color = '#000000';
       if (currentFilter === 'red') color = '#ff0000';
       if (currentFilter === 'green') color = '#00ff00';
       if (currentFilter === 'blue') color = '#007bff';
       ctx.fillStyle = color;
+      ctx.globalAlpha = 0.16;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
     }
 
+    // Cambiar cámara
     async function switchCamera() {
       currentFacing = currentFacing === 'user' ? 'environment' : 'user';
       try {
         await setupCamera(currentFacing);
-        statusEl.textContent = `✅ Cámara: ${currentFacing}`;
+        statusEl.textContent = `✅ Cámara: ${currentFacing === 'user' ? 'Frontal' : 'Trasera'}`;
       } catch (e) {
         statusEl.textContent = '❌ Error cámara: ' + e.message;
         console.error(e);
       }
     }
 
+    // Cambiar filtro
     function setFilter(filter) {
       currentFilter = filter;
       filterButtons.forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
@@ -341,7 +329,7 @@
 
     // Bucle principal
     async function detectLoop() {
-      if (isReady && video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (isReady && video.readyState >= 2) { // HAVE_CURRENT_DATA or more
         await pose.send({ image: video });
       }
       requestAnimationFrame(detectLoop);
@@ -351,7 +339,6 @@
     async function init() {
       try {
         await setupCamera(currentFacing);
-        // Event listeners for UI
         switchBtn.addEventListener('click', switchCamera);
         filterButtons.forEach(btn => {
           btn.addEventListener('click', () => setFilter(btn.dataset.filter));
@@ -365,12 +352,6 @@
       }
     }
 
-    // Ajustar orientación en móviles
-    window.addEventListener('deviceorientation', () => {
-      // Opcional: rotar si es necesario
-    });
-
-    // Iniciar cuando la página cargue
     window.addEventListener('load', init);
   </script>
 
