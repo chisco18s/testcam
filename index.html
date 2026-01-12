@@ -1,167 +1,172 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
-  <title>Spectral AI - Real Entities</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-  <style>
-    :root { --main: #00ff41; --danger: #ff3c3c; --ghost: #00f2ff; }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-    body { background: #000; color: var(--main); overflow: hidden; position: fixed; width: 100%; height: 100%; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Spectral AI Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+    <style>
+        :root { --main: #00ff41; --danger: #ff3c3c; --ghost: #00f2ff; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { background: #000; color: var(--main); overflow: hidden; position: fixed; width: 100vw; height: 100vh; }
 
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.3) contrast(1.5) sepia(100%) hue-rotate(80deg); opacity: 0.4; }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; }
+        /* Filtros Dinámicos */
+        .filter-normal { filter: brightness(0.5) grayscale(1); }
+        .filter-thermal { filter: brightness(0.6) contrast(2) saturate(5) hue-rotate(240deg); }
+        .filter-night { filter: brightness(0.8) sepia(100%) hue-rotate(80deg) saturate(2); }
+        .filter-spectro { filter: brightness(0.5) invert(1) hue-rotate(180deg); }
 
-    #hud-top { 
-        position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; 
-        z-index: 20; padding: 40px 10px 10px 10px; 
-        background: linear-gradient(to bottom, rgba(0,20,0,0.8), transparent);
-    }
-    .value { font-size: 1.1rem; font-weight: bold; color: white; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transition: filter 0.5s; }
+        #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
-    /* Registro con descripción */
-    #registry-console { 
-        position: absolute; bottom: 120px; left: 10px; right: 10px; height: 130px; 
-        background: rgba(0, 15, 0, 0.6); border-left: 3px solid var(--danger);
-        padding: 8px; overflow: hidden; font-size: 10px; z-index: 25;
-        display: flex; flex-direction: column-reverse;
-    }
-    .log-entry { margin-bottom: 5px; animation: slideIn 0.3s ease; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; }
-    .log-name { color: var(--danger); font-weight: bold; font-size: 12px; }
-    .log-desc { color: #aaa; font-style: italic; }
+        /* Interfaz HUD */
+        #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 45px 10px 15px; background: rgba(0,0,0,0.7); border-bottom: 1px solid var(--main); }
+        .value { font-size: 1.2rem; font-weight: bold; color: white; }
 
-    @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        /* Selector de Filtros */
+        #filter-bar { position: absolute; top: 110px; left: 0; width: 100%; display: flex; justify-content: center; gap: 5px; z-index: 30; padding: 5px; }
+        .filter-btn { background: rgba(0,0,0,0.8); border: 1px solid var(--main); color: var(--main); padding: 8px 12px; font-size: 10px; border-radius: 4px; text-transform: uppercase; }
+        .filter-btn.active { background: var(--main); color: black; }
 
-    #proximity-bar { position: absolute; right: 10px; top: 25%; width: 8px; height: 40%; border: 1px solid #333; z-index: 20; background: #111; }
-    #proximity-fill { width: 100%; height: 0%; background: var(--danger); transition: height 0.3s; box-shadow: 0 0 10px var(--danger); }
-    
-    .entity-tag { position: absolute; color: white; font-weight: bold; padding: 2px 8px; border: 1px solid var(--danger); background: rgba(255,0,0,0.4); z-index: 40; font-size: 11px; pointer-events: none; }
-    
-    .bottom-bar { position: fixed; bottom: 0; width: 100%; padding: 15px 20px 30px 20px; background: #000; border-top: 1px solid var(--main); display: flex; justify-content: space-between; align-items: center; z-index: 30; }
-    #start-overlay { position: fixed; inset: 0; background: black; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
-  </style>
+        /* Consola de Registro */
+        #registry { position: absolute; bottom: 130px; left: 15px; right: 15px; height: 120px; background: rgba(0,20,0,0.5); border-left: 3px solid var(--danger); padding: 10px; z-index: 20; overflow: hidden; display: flex; flex-direction: column-reverse; font-size: 11px; }
+        .log-item { margin-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; }
+        .log-name { color: var(--danger); font-weight: bold; }
+
+        /* Etiqueta flotante */
+        .entity-tag { position: absolute; color: white; font-weight: bold; padding: 5px 10px; border: 1px solid var(--danger); background: rgba(255,0,0,0.4); z-index: 40; font-size: 12px; transform: translate(-50%, -100%); pointer-events: none; }
+
+        .bottom-ui { position: fixed; bottom: 0; width: 100%; height: 100px; background: #000; z-index: 50; display: flex; justify-content: space-between; align-items: center; padding: 0 20px 20px; border-top: 1px solid var(--main); }
+        #start-screen { position: fixed; inset: 0; background: black; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    </style>
 </head>
 <body>
 
-  <div id="start-overlay">
-    <h1 style="color: var(--danger); letter-spacing: 4px;">ARCHIVOS ESPECTRALES</h1>
-    <p style="color: #666; margin: 20px 0;">Base de Datos de Entidades Reales v2.1</p>
-    <button onclick="initApp()" style="background: transparent; border: 1px solid var(--main); color: var(--main); padding: 15px 30px; font-size: 1rem;">ACCEDER AL SISTEMA</button>
-  </div>
+<div id="start-screen">
+    <h1 style="color:var(--danger); letter-spacing: 5px; margin-bottom: 20px;">SPECTRAL AI v3.0</h1>
+    <button onclick="init()" style="padding: 20px 40px; background: transparent; border: 2px solid var(--main); color: var(--main); font-size: 1.2rem;">ACTIVAR ESCÁNER</button>
+</div>
 
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
+<video id="video" class="filter-normal" playsinline muted></video>
+<canvas id="canvas"></canvas>
 
-  <div id="hud-top">
-    <div class="data-box"><div style="font-size: 9px">EMF LEVEL</div><div class="value" id="val-emf">0.00</div></div>
-    <div class="data-box"><div style="font-size: 9px">AMENAZA</div><div class="value" id="val-threat" style="color:var(--danger)">BAJA</div></div>
-  </div>
+<div id="hud-top">
+    <div style="text-align:center"><small>EMF</small><div id="emf" class="value">0.00</div></div>
+    <div style="text-align:center"><small>AMENAZA</small><div id="threat" class="value" style="color:var(--danger)">BAJA</div></div>
+</div>
 
-  <div id="proximity-bar"><div id="proximity-fill"></div></div>
-  <div id="registry-console"></div>
-  <div id="entity-label" class="entity-tag" style="display:none">ID: DETECTED</div>
+<div id="filter-bar">
+    <button class="filter-btn active" onclick="setFilter('normal', this)">Normal</button>
+    <button class="filter-btn" onclick="setFilter('thermal', this)">Térmica</button>
+    <button class="filter-btn" onclick="setFilter('night', this)">Nocturna</button>
+    <button class="filter-btn" onclick="setFilter('spectro', this)">Espectro</button>
+</div>
 
-  <div class="bottom-bar">
-    <div style="font-size: 10px;">ID ENTIDAD ACTIVA<br><span id="timer" style="color:white">00:00:00</span></div>
-    <div style="text-align: right; color: var(--main); font-size: 10px;">PROCESADOR SENS-AI<br>CORE: ONLINE</div>
-  </div>
+<div id="registry"></div>
+<div id="entity-tag" class="entity-tag" style="display:none"></div>
 
-  <script>
+<div class="bottom-ui">
+    <div><small>SISTEMA</small><br>ONLINE</div>
+    <div style="text-align:right"><small>TIEMPO ACTIVO</small><br><span id="clock">00:00:00</span></div>
+</div>
+
+<script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const registry = document.getElementById('registry-console');
-    const entityLabel = document.getElementById('entity-label');
+    const registry = document.getElementById('registry');
+    const tag = document.getElementById('entity-tag');
 
-    // BASE DE DATOS DE ENTIDADES REALES
-    const REAL_ENTITIES = [
-        { name: "Paimon", desc: "Rey del infierno, obediente a Lucifer. Conocido por su voz atronadora." },
-        { name: "Valak", desc: "Gran Presidente del infierno. Se manifiesta como un niño con alas de ángel." },
-        { name: "The Hat Man", desc: "Sombra alta con sombrero. Reportado mundialmente en parálisis del sueño." },
-        { name: "Oni", desc: "Criatura del folclore japonés. Representa la fuerza y la furia destructiva." },
-        { name: "Banshee", desc: "Espíritu femenino celta cuyo grito anuncia una muerte inminente." },
-        { name: "Zozo", desc: "Entidad reportada frecuentemente en sesiones de Ouija. Altamente hostil." },
-        { name: "Succubus", desc: "Entidad que consume la energía vital de sus víctimas durante el sueño." }
+    const ENTITIES = [
+        { n: "Paimon", d: "Rey infernal. Voz atronadora detectada." },
+        { n: "Valak", d: "Entidad de alta jerarquía. Forma infantil." },
+        { n: "The Hat Man", d: "Sombra residual. Vigilante del sueño." },
+        { n: "Zozo", d: "Entidad parasitaria de tableros. Peligro." },
+        { n: "Banshee", d: "Heraldo de muerte. Frecuencia sónica alta." }
     ];
 
-    let currentEntity = null;
+    let currentName = "";
 
-    async function initApp() {
-        document.getElementById('start-overlay').style.display = 'none';
+    function setFilter(type, btn) {
+        video.className = 'filter-' + type;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    async function init() {
+        document.getElementById('start-screen').style.display = 'none';
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         video.srcObject = stream;
         video.play();
+
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.6 });
+        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
         pose.onResults(onResults);
 
-        setInterval(() => { if(video.readyState === 4) pose.send({ image: video }); }, 100);
-        setInterval(() => { document.getElementById('timer').innerText = new Date().toLocaleTimeString(); }, 1000);
+        setInterval(() => { if(video.readyState === 4) pose.send({ image: video }); }, 80);
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
     }
 
-    function addLog(entity) {
-        const entry = document.createElement('div');
-        entry.className = 'log-entry';
-        entry.innerHTML = `<span class="log-name">${entity.name}</span><br><span class="log-desc">${entity.desc}</span>`;
-        registry.prepend(entry);
-        if (registry.children.length > 4) registry.lastChild.remove();
-    }
-
-    function onResults(results) {
+    function onResults(res) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (results.poseLandmarks) {
-            if (!currentEntity) {
-                currentEntity = REAL_ENTITIES[Math.floor(Math.random() * REAL_ENTITIES.length)];
-                addLog(currentEntity);
-                speak(`Precaución. Identificado como ${currentEntity.name}.`);
+        if (res.poseLandmarks) {
+            if (!currentName) {
+                const ent = ENTITIES[Math.floor(Math.random()*ENTITIES.length)];
+                currentName = ent.n;
+                addLog(ent);
+                speak("Alerta. " + ent.n + " detectado.");
             }
-            drawGhost(results.poseLandmarks);
+            drawGhost(res.poseLandmarks);
             updateHUD(true);
         } else {
-            currentEntity = null;
-            entityLabel.style.display = 'none';
+            currentName = "";
+            tag.style.display = 'none';
             updateHUD(false);
         }
     }
 
-    function updateHUD(detected) {
-        const emf = detected ? (Math.random()*15).toFixed(2) : (Math.random()*0.5).toFixed(2);
-        document.getElementById('val-emf').innerText = emf;
-        document.getElementById('val-threat').innerText = emf > 10 ? "EXTREMA" : (detected ? "ALTA" : "BAJA");
-        document.getElementById('proximity-fill').style.height = (emf * 6) + "%";
-    }
-
     function drawGhost(lm) {
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+        ctx.strokeStyle = "rgba(0, 255, 65, 0.6)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         lm.forEach((p, i) => {
             const x = p.x * canvas.width;
             const y = p.y * canvas.height;
             if (i === 0) {
+                tag.style.display = 'block';
+                tag.style.left = x + 'px';
+                tag.style.top = (y - 20) + 'px';
+                tag.innerText = "ID: " + currentName;
                 ctx.moveTo(x, y);
-                entityLabel.style.display = 'block';
-                entityLabel.style.left = x + 'px';
-                entityLabel.style.top = (y - 40) + 'px';
-                entityLabel.innerText = currentEntity.name;
             }
-            ctx.lineTo(x + (Math.random()*10-5), y + (Math.random()*10-5));
+            ctx.lineTo(x + (Math.random()*6-3), y + (Math.random()*6-3));
             ctx.fillStyle = "white";
-            ctx.fillRect(x, y, 2, 2);
+            ctx.fillRect(x-1, y-1, 3, 3);
         });
         ctx.stroke();
     }
 
-    function speak(txt) {
-        const s = new SpeechSynthesisUtterance(txt);
-        s.lang = 'es-ES';
-        s.pitch = 0.5;
+    function addLog(e) {
+        const item = document.createElement('div');
+        item.className = 'log-item';
+        item.innerHTML = `<span class="log-name">${e.n}</span>: ${e.d}`;
+        registry.prepend(item);
+    }
+
+    function updateHUD(det) {
+        const emfValue = det ? (Math.random()*12).toFixed(2) : (Math.random()*0.3).toFixed(2);
+        document.getElementById('emf').innerText = emfValue;
+        document.getElementById('threat').innerText = emfValue > 9 ? "EXTREMA" : (det ? "ALTA" : "BAJA");
+    }
+
+    function speak(t) {
+        const s = new SpeechSynthesisUtterance(t);
+        s.lang = 'es-ES'; s.pitch = 0.5;
         window.speechSynthesis.speak(s);
     }
-  </script>
+</script>
 </body>
 </html>
