@@ -3,92 +3,84 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Kinect Life Quality Suite</title>
+  <title>Kinect Life Coach Pro v3</title>
   <style>
-    :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; }
+    :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; --warning: #ffcc00; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; position: fixed; width: 100%; height: 100%; }
+    body { background: #000; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; position: fixed; width: 100%; height: 100%; }
     
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; filter: brightness(0.6); }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
 
-    /* --- MENÚ DE INICIO --- */
-    #main-menu {
-      position: absolute; inset: 0; z-index: 100;
-      background: rgba(0,0,0,0.9); backdrop-filter: blur(15px);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
-    }
-    h1 { margin-bottom: 30px; font-size: 24px; text-align: center; color: var(--neon); text-transform: uppercase; letter-spacing: 2px; }
-    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 400px; }
+    /* --- PANTALLAS --- */
+    .screen { position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); transition: 0.5s; }
+    .hidden { opacity: 0; pointer-events: none; }
+
+    /* --- MENÚ PRINCIPAL --- */
+    h1 { margin-bottom: 20px; font-size: 28px; color: var(--neon); text-shadow: 0 0 10px var(--neon); }
+    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 90%; max-width: 450px; }
     .menu-btn {
       background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2);
-      padding: 20px 10px; border-radius: 15px; color: white; cursor: pointer;
+      padding: 20px 10px; border-radius: 20px; color: white; cursor: pointer;
       display: flex; flex-direction: column; align-items: center; gap: 10px; transition: 0.3s;
     }
-    .menu-btn:active { transform: scale(0.95); background: var(--accent); }
-    .menu-btn i { font-size: 24px; }
-    .menu-btn span { font-size: 12px; font-weight: bold; text-align: center; }
+    .menu-btn:active { background: var(--accent); transform: scale(0.95); }
 
-    /* --- HUD DINÁMICO --- */
-    #hud {
-      position: absolute; top: 15px; width: 100%; padding: 0 15px;
-      display: flex; justify-content: space-between; z-index: 10; pointer-events: none;
-      display: none;
-    }
-    .stat-card { background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px; border-left: 3px solid var(--neon); min-width: 90px; }
-    .label { font-size: 9px; color: var(--neon); text-transform: uppercase; display: block; }
-    .value { font-size: 18px; font-weight: bold; }
+    /* --- INSTRUCCIONES --- */
+    #setup-guide { text-align: center; padding: 30px; }
+    .guide-step { margin: 15px 0; font-size: 18px; color: #ccc; }
+    .pulse { animation: pulse-red 2s infinite; }
+    @keyframes pulse-red { 0% { color: white; } 50% { color: var(--neon); } 100% { color: white; } }
 
-    /* --- ALERTAS Y FEEDBACK --- */
-    #alert-box {
+    /* --- HUD EN VIVO --- */
+    #hud { position: absolute; top: 15px; width: 100%; padding: 0 15px; display: none; justify-content: space-between; z-index: 10; }
+    .stat-card { background: rgba(0,0,0,0.7); padding: 12px; border-radius: 15px; border-top: 3px solid var(--neon); min-width: 100px; text-align: center; }
+    .label { font-size: 10px; color: var(--neon); text-transform: uppercase; }
+    .value { font-size: 22px; font-weight: bold; }
+
+    /* --- ALERTAS --- */
+    #alert-overlay {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      text-align: center; width: 80%; z-index: 20; pointer-events: none;
-      font-size: 32px; font-weight: 900; text-transform: uppercase; opacity: 0; transition: 0.3s;
+      text-align: center; width: 90%; z-index: 50; pointer-events: none;
+      font-size: 30px; font-weight: 900; opacity: 0; transition: 0.2s;
     }
-    .warning { color: var(--danger); text-shadow: 0 0 20px var(--danger); }
-    .success { color: var(--zen); text-shadow: 0 0 20px var(--zen); }
 
-    /* --- BOTÓN DE SALIDA --- */
-    #btn-exit { position: absolute; top: 80px; right: 15px; z-index: 20; padding: 10px; border-radius: 50%; background: rgba(255,0,0,0.3); border: 1px solid red; display: none; }
+    /* --- CONTROLES --- */
+    .btn-home { position: absolute; bottom: 30px; right: 20px; z-index: 200; width: 60px; height: 60px; border-radius: 50%; background: var(--danger); border: none; color: white; font-size: 24px; display: none; cursor: pointer; box-shadow: 0 0 20px rgba(255,0,0,0.5); }
   </style>
 </head>
 <body>
 
-  <div id="main-menu">
-    <h1>Kinect Life Suite</h1>
+  <div id="screen-menu" class="screen">
+    <h1>LIFE QUALITY AI</h1>
+    <p style="margin-bottom:20px; color:#888;">Elige tu modo de bienestar:</p>
     <div class="menu-grid">
-      <div class="menu-btn" onclick="startApp('fitness')">
-        <span>💪</span>
-        <span>ENTRENAMIENTO<br>PRO</span>
-      </div>
-      <div class="menu-btn" onclick="startApp('posture')">
-        <span>🧘</span>
-        <span>CORRECTOR<br>POSTURAL</span>
-      </div>
-      <div class="menu-btn" onclick="startApp('balance')">
-        <span>⚖️</span>
-        <span>TEST DE<br>EQUILIBRIO</span>
-      </div>
-      <div class="menu-btn" onclick="startApp('zen')">
-        <span>✨</span>
-        <span>MODO<br>ZEN</span>
-      </div>
+      <div class="menu-btn" onclick="showSetup('fitness')"><span>💪</span><span>FITNESS PRO</span></div>
+      <div class="menu-btn" onclick="showSetup('posture')"><span>🧘</span><span>POSTURA SMART</span></div>
+      <div class="menu-btn" onclick="showSetup('balance')"><span>⚖️</span><span>EQUILIBRIO</span></div>
+      <div class="menu-btn" onclick="showSetup('break')"><span>💻</span><span>PAUSA ACTIVA</span></div>
     </div>
+  </div>
+
+  <div id="screen-setup" class="screen hidden">
+    <h2 id="setup-title" style="color:var(--neon)">PREPARACIÓN</h2>
+    <div id="setup-guide">
+      <div class="guide-step">1. Aléjate de la cámara (2-3 metros).</div>
+      <div class="guide-step">2. Asegúrate de que se vean tus <b class="pulse">PIES y CABEZA</b>.</div>
+      <div class="guide-step">3. Ilumina bien tu habitación.</div>
+      <div class="guide-step" id="mode-instruction" style="color:var(--zen)">Instrucción del modo...</div>
+    </div>
+    <button class="menu-btn" style="background:var(--accent); padding:15px 40px;" onclick="startApp()">¡ESTOY LISTO!</button>
   </div>
 
   <div id="hud">
-    <div class="stat-card">
-        <span class="label" id="label-1">Dato 1</span>
-        <span id="val-1" class="value">0</span>
-    </div>
-    <div class="stat-card" style="border-color: var(--accent);">
-        <span class="label" id="label-2">Dato 2</span>
-        <span id="val-2" class="value">0</span>
-    </div>
+    <div class="stat-card"><span class="label" id="l1">Dato</span><span id="v1" class="value">0</span></div>
+    <div id="sitting-tag" class="stat-card" style="border-color:var(--warning)"><span class="label">ESTADO</span><span id="v-status" class="value">BUSCANDO...</span></div>
+    <div class="stat-card" style="border-color:var(--zen)"><span class="label" id="l2">Dato</span><span id="v2" class="value">0</span></div>
   </div>
 
-  <button id="btn-exit" onclick="exitToMenu()">❌</button>
-  <div id="alert-box">¡ALERTA!</div>
+  <button id="btn-home" class="btn-home" onclick="exitToMenu()">🏠</button>
+  <div id="alert-overlay">ALERTA</div>
 
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
@@ -96,36 +88,50 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
 
   <script>
+    // --- MOTOR DE AUDIO ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(type) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        if(type === 'success') { // Tono agudo (Bien)
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        } else { // Tono grave (Error)
+            osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        }
+        
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // --- VARIABLES GLOBALES ---
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const alertBox = document.getElementById('alert-box');
+    const alertOverlay = document.getElementById('alert-overlay');
     
     let poseDetector;
     let currentMode = null;
     let isRunning = false;
-    
-    // Variables de Estado
-    let reps = 0, stage = "start", calories = 0;
-    let balanceHistory = [];
-    let lastHandPos = {x:0, y:0};
+    let isSitting = false;
+    let reps = 0, stage = "start";
 
-    async function initDetector() {
-      poseDetector = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-      });
-      poseDetector.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    // --- INICIALIZACIÓN ---
+    async function init() {
+      poseDetector = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+      poseDetector.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
       poseDetector.onResults(onResults);
       
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
       video.srcObject = stream;
       video.style.transform = "scaleX(-1)";
-      video.onloadedmetadata = () => {
-          video.play();
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-      };
-
+      video.onloadedmetadata = () => { video.play(); resize(); };
+      
       const loop = async () => {
         if (isRunning && video.readyState >= 2) await poseDetector.send({ image: video });
         requestAnimationFrame(loop);
@@ -133,32 +139,42 @@
       loop();
     }
 
-    function startApp(mode) {
-      currentMode = mode;
-      isRunning = true;
-      document.getElementById('main-menu').style.display = 'none';
-      document.getElementById('hud').style.display = 'flex';
-      document.getElementById('btn-exit').style.display = 'block';
-      resetCounters();
-      setupHUD();
+    function showSetup(mode) {
+        currentMode = mode;
+        document.getElementById('screen-menu').classList.add('hidden');
+        document.getElementById('screen-setup').classList.remove('hidden');
+        const inst = document.getElementById('mode-instruction');
+        if(mode === 'fitness') inst.innerText = "Haremos Sentadillas. Mantente de pie.";
+        if(mode === 'posture') inst.innerText = "Analizaremos tu espalda sentado o de pie.";
+        if(mode === 'balance') inst.innerText = "Ponte sobre una pierna cuando la app lo pida.";
+        if(mode === 'break') inst.innerText = "Estiramientos guiados para tu jornada.";
+    }
+
+    function startApp() {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        isRunning = true;
+        document.getElementById('screen-setup').classList.add('hidden');
+        document.getElementById('hud').style.display = 'flex';
+        document.getElementById('btn-home').style.display = 'block';
+        setupHUD();
     }
 
     function exitToMenu() {
-      isRunning = false;
-      document.getElementById('main-menu').style.display = 'flex';
-      document.getElementById('hud').style.display = 'none';
-      document.getElementById('btn-exit').style.display = 'none';
+        isRunning = false;
+        document.getElementById('screen-menu').classList.remove('hidden');
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('btn-home').style.display = 'none';
+        reps = 0;
     }
 
     function setupHUD() {
-        const l1 = document.getElementById('label-1');
-        const l2 = document.getElementById('label-2');
-        if(currentMode === 'fitness') { l1.innerText="Reps"; l2.innerText="Calorías"; }
-        if(currentMode === 'posture') { l1.innerText="Postura"; l2.innerText="Ángulo"; }
-        if(currentMode === 'balance') { l1.innerText="Estabilidad"; l2.innerText="Desvío"; }
-        if(currentMode === 'zen') { l1.innerText="Fluidez"; l2.innerText="Calma"; }
+        const l1 = document.getElementById('l1'), l2 = document.getElementById('l2');
+        if(currentMode === 'fitness') { l1.innerText="REPS"; l2.innerText="META"; }
+        if(currentMode === 'posture') { l1.innerText="ESTADO"; l2.innerText="CUELLO"; }
+        if(currentMode === 'break') { l1.innerText="PASO"; l2.innerText="TIEMPO"; }
     }
 
+    // --- PROCESAMIENTO ---
     function onResults(results) {
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -167,81 +183,74 @@
       if (results.poseLandmarks) {
         const lm = results.poseLandmarks;
         drawSkeleton(lm);
+        detectSitting(lm);
 
-        if(currentMode === 'fitness') processFitness(lm);
-        if(currentMode === 'posture') processPosture(lm);
-        if(currentMode === 'balance') processBalance(lm);
-        if(currentMode === 'zen') processZen(lm);
+        if(currentMode === 'fitness') fitnessLogic(lm);
+        if(currentMode === 'posture') postureLogic(lm);
+        if(currentMode === 'break') breakLogic(lm);
+      } else {
+          showToast("¡NO TE VEO! ALÉJATE", "warning");
       }
       ctx.restore();
     }
 
-    // --- LÓGICA POR MODO ---
-
-    function processFitness(lm) {
-        const hip = (lm[23].y + lm[24].y)/2;
-        const knee = (lm[25].y + lm[26].y)/2;
-        if (stage === "start" && hip > knee - 0.05) stage = "down";
-        if (stage === "down" && hip < knee - 0.15) {
-            reps++; calories += 0.5; stage = "start";
-            updateStats(reps, calories.toFixed(1));
-        }
-    }
-
-    function processPosture(lm) {
-        // Medimos ángulo de la oreja respecto al hombro (Cuello de texto)
-        const ear = lm[7]; const shoulder = lm[11];
-        const dist = Math.abs(ear.x - shoulder.x);
-        const angle = Math.abs(ear.y - shoulder.y);
+    function detectSitting(lm) {
+        // Lógica: Si la distancia vertical cadera-rodilla es pequeña, está sentado
+        const hipY = (lm[23].y + lm[24].y) / 2;
+        const kneeY = (lm[25].y + lm[26].y) / 2;
+        const ankleY = (lm[27].y + lm[28].y) / 2;
         
-        document.getElementById('val-2').innerText = (dist * 100).toFixed(0) + "%";
-
-        if (dist > 0.15) { // Cabeza muy adelantada
-            showAlert("¡ENDEREZA TU CUELLO!", "warning");
-            document.getElementById('val-1').innerText = "MALA";
-        } else {
-            hideAlert();
-            document.getElementById('val-1').innerText = "EXCELENTE";
-        }
+        isSitting = (Math.abs(hipY - kneeY) < 0.12);
+        document.getElementById('v-status').innerText = isSitting ? "SENTADO" : "DE PIE";
     }
 
-    function processBalance(lm) {
-        const nose = lm[0];
-        balanceHistory.push(nose.x);
-        if(balanceHistory.length > 50) balanceHistory.shift();
+    function fitnessLogic(lm) {
+        if(isSitting) { showToast("¡PONTE DE PIE PARA EJERCITAR!", "warning"); return; }
+        const hip = lm[24].y, knee = lm[26].y;
+        if(stage === "start" && hip > knee - 0.05) { stage = "down"; playSound('success'); }
+        if(stage === "down" && hip < knee - 0.15) { reps++; stage = "start"; playSound('success'); }
+        document.getElementById('v1').innerText = reps;
+        document.getElementById('v2').innerText = "15";
+    }
+
+    function postureLogic(lm) {
+        const ear = lm[8], shoulder = lm[12];
+        const neckLean = Math.abs(ear.x - shoulder.x);
         
-        const deviation = Math.max(...balanceHistory) - Math.min(...balanceHistory);
-        document.getElementById('val-2').innerText = (deviation * 100).toFixed(1);
-        
-        if(deviation > 0.1) {
-            showAlert("¡ESTABILÍZATE!", "warning");
-            document.getElementById('val-1').innerText = "INESTABLE";
+        document.getElementById('v1').innerText = isSitting ? "EN SILLA" : "ERGUIDO";
+        document.getElementById('v2').innerText = (neckLean * 100).toFixed(0) + "°";
+
+        if(neckLean > 0.18) {
+            showToast("¡ENDEREZA LA CABEZA!", "danger");
+            playSound('error');
         } else {
-            hideAlert();
-            document.getElementById('val-1').innerText = "ESTABLE";
+            hideToast();
         }
     }
 
-    function processZen(lm) {
-        const hand = lm[15];
-        const movement = Math.abs(hand.x - lastHandPos.x) + Math.abs(hand.y - lastHandPos.y);
-        lastHandPos = {x: hand.x, y: hand.y};
-
-        if(movement > 0.05) {
-            showAlert("MÁS LENTO...", "warning");
-            document.getElementById('val-1').innerText = "RÁPIDO";
+    function breakLogic(lm) {
+        const handL = lm[15].y, head = lm[0].y;
+        if(handL < head) {
+            showToast("¡EXCELENTE ESTIRAMIENTO!", "success");
+            document.getElementById('v1').innerText = "BIEN";
         } else {
-            showAlert("BIEN...", "success");
-            document.getElementById('val-1').innerText = "FLUIDO";
+            showToast("ESTIRA LOS BRAZOS ARRIBA", "warning");
+            document.getElementById('v1').innerText = "ESPERANDO";
         }
     }
 
-    // --- UTILIDADES ---
+    // --- UI HELPERS ---
+    function showToast(txt, type) {
+        alertOverlay.innerText = txt;
+        alertOverlay.style.color = type === 'danger' ? 'var(--danger)' : (type === 'success' ? 'var(--zen)' : 'var(--warning)');
+        alertOverlay.style.opacity = 1;
+    }
+    function hideToast() { alertOverlay.style.opacity = 0; }
 
     function drawSkeleton(lm) {
-        ctx.strokeStyle = "white"; ctx.lineWidth = 4;
-        const parts = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
-        parts.forEach(([a,b]) => {
+        ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 3;
+        const connections = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
+        connections.forEach(([a,b]) => {
             if(lm[a].visibility > 0.5 && lm[b].visibility > 0.5) {
                 ctx.beginPath();
                 ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
@@ -249,27 +258,25 @@
                 ctx.stroke();
             }
         });
+        // Puntos de interés
+        ctx.fillStyle = varColor();
+        [0, 15, 16, 27, 28].forEach(i => {
+            ctx.beginPath();
+            ctx.arc(lm[i].x * canvas.width, lm[i].y * canvas.height, 5, 0, 7);
+            ctx.fill();
+        });
     }
 
-    function showAlert(txt, type) {
-        alertBox.innerText = txt;
-        alertBox.className = type;
-        alertBox.style.opacity = 1;
+    function varColor() {
+        if(currentMode === 'fitness') return '#00f2ff';
+        if(currentMode === 'posture') return '#ffcc00';
+        return '#00ff88';
     }
 
-    function hideAlert() { alertBox.style.opacity = 0; }
-
-    function updateStats(v1, v2) {
-        document.getElementById('val-1').innerText = v1;
-        document.getElementById('val-2').innerText = v2;
-    }
-
-    function resetCounters() {
-        reps = 0; calories = 0; stage = "start";
-        updateStats(0,0);
-    }
-
-    initDetector();
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    init();
   </script>
 </body>
 </html>
+
