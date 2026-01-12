@@ -1,111 +1,453 @@
-<script>
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
-  let poseDetector = null;
-  let count = 0;
-  let stage = "up";
-
-  document.body.addEventListener(
-    "click",
-    () => {
-      video.play();
-    },
-    { once: true }
-  );
-
-  async function init() {
-    poseDetector = new Pose({
-      locateFile: (file) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4/${file}`,
-    });
-
-    poseDetector.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
-    poseDetector.onResults(onResults);
-
-    await setupCamera();
-    requestAnimationFrame(loop);
-  }
-
-  async function setupCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
-
-    video.srcObject = stream;
-    video.setAttribute("playsinline", true);
-
-    return new Promise((res) => {
-      video.onloadedmetadata = () => {
-        video.play();
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        res();
-      };
-    });
-  }
-
-  function loop() {
-    if (video.readyState >= 2) {
-      poseDetector.send({ image: video });
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Kinect Fitness Coach Pro</title>
+  <style>
+    /* --- Estilos Generales --- */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; color: white; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+    
+    /* --- Paneles de Información (HUD) --- */
+    .hud-panel {
+      position: absolute; background: rgba(0,0,0,0.7); padding: 15px; 
+      border-radius: 12px; border-left: 4px solid #00f2ff; z-index: 10;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    requestAnimationFrame(loop);
-  }
+    #stats-panel { top: 20px; left: 20px; }
+    #routine-panel { top: 120px; left: 20px; border-color: #ff9100; }
+    
+    .stat-label { font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 28px; font-weight: bold; color: #fff; display: block; }
+    .highlight { color: #00f2ff; }
+    .highlight-warm { color: #ff9100; }
 
-  function onResults(results) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!results.poseLandmarks || results.poseLandmarks.length < 33) return;
-
-    const lm = results.poseLandmarks;
-
-    const hip = lm[24];
-    const knee = lm[26];
-
-    if (hip.y > knee.y) {
-      stage = "down";
+    /* --- Guía Central y Estado --- */
+    #status-bar {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 242, 255, 0.2); padding: 8px 20px; border-radius: 20px;
+      color: #00f2ff; font-weight: bold; z-index: 10; border: 1px solid #00f2ff; font-size: 14px;
+    }
+    #guidance-text {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        font-size: 40px; font-weight: 900; color: rgba(255,255,255,0.9);
+        text-shadow: 0 0 20px #00f2ff; z-index: 8; text-align: center; pointer-events: none;
     }
 
-    if (hip.y < knee.y - 0.15 && stage === "down") {
-      stage = "up";
-      count++;
-      document.getElementById("count-val").innerText = count;
+    /* --- Botón Virtual (UX Táctil) --- */
+    #v-button {
+      position: absolute; top: 20px; right: 20px; 
+      width: 80px; height: 80px; border: 3px dashed rgba(255, 68, 68, 0.5);
+      border-radius: 12px; z-index: 15; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; font-size: 10px;
+      background: rgba(0,0,0,0.3); transition: border-color 0.3s;
+    }
+    #v-button.hovered { border-color: rgba(255, 68, 68, 1); }
+    #v-fill {
+      position: absolute; bottom: 0; left:0; width: 100%; height: 0%;
+      background: rgba(255, 68, 68, 0.6); border-radius: 9px; transition: height 0.1s linear; z-index: -1;
     }
 
-    drawSkeleton(lm);
-  }
+    /* --- Botones Inferiores (UI) --- */
+    .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
+    button {
+      background: rgba(255,255,255,0.15); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.3); color: white;
+      padding: 12px 24px; border-radius: 50px; cursor: pointer; font-weight: bold; font-size: 14px;
+      transition: all 0.2s ease;
+    }
+    button:active { background: #00f2ff; color: #000; transform: scale(0.95); }
+  </style>
+</head>
+<body>
 
-  function drawSkeleton(lm) {
-    ctx.strokeStyle = "#00f2ff";
-    ctx.lineWidth = 4;
+  <div id="status-bar">INICIALIZANDO COACH VIRTUAL...</div>
+  <div id="guidance-text">PREPÁRATE</div>
 
-    const connections = [
-      [11, 12],
-      [23, 24],
-      [23, 25],
-      [25, 27],
-      [24, 26],
-      [26, 28],
+  <div id="stats-panel" class="hud-panel">
+    <div>
+        <span class="stat-label">Calorías Quemadas</span>
+        <span id="cal-val" class="stat-value highlight-warm">0</span>
+    </div>
+    <div style="margin-top: 10px;">
+        <span class="stat-label">Ángulo Codo Der.</span>
+        <span id="angle-val" class="stat-value">0°</span>
+    </div>
+  </div>
+
+  <div id="routine-panel" class="hud-panel">
+      <div>
+          <span class="stat-label">Ejercicio Actual</span>
+          <span id="ex-name" class="stat-value highlight" style="font-size: 20px;">-</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <span class="stat-label">Repeticiones Restantes</span>
+        <span id="reps-val" class="stat-value" style="font-size: 36px;">0</span>
+    </div>
+  </div>
+
+  <div id="v-button">
+    <div id="v-fill"></div>
+    <span style="font-size: 16px;">🖐️</span>
+    <span style="margin-top:5px;">MANO DER.<br>REINICIAR</span>
+  </div>
+
+  <video id="video" playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div class="ui">
+    <button id="btn-camera">🔄 Girar Cámara</button>
+    <button id="btn-ghost">👻 Modo Estela</button>
+    <button id="btn-color">🎨 Cambiar Color</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+
+  <script>
+    // --- Configuración e Inicialización ---
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status-bar');
+    const guidanceEl = document.getElementById('guidance-text');
+    const vButtonEl = document.getElementById('v-button');
+    
+    let poseDetector;
+    let isGhost = false;
+    let currentFacing = 'user';
+    let skeletonColor = "#00f2ff";
+    
+    // --- Estado de la Rutina y Fitness ---
+    let totalCalories = 0;
+    let currentExIndex = 0;
+    let repsRemaining = 0;
+    let exerciseStage = "start"; // start, mid, end
+    let isRoutineActive = false;
+
+    // --- Estado del Botón Virtual ---
+    let vFillHeight = 0;
+    let vHovering = false;
+
+    // --- DEFINICIÓN DE LA RUTINA (COACH) ---
+    const exerciseRoutine = [
+        {
+            id: 'squats',
+            name: 'SENTADILLAS',
+            targetReps: 5,
+            calsPerRep: 0.5,
+            instruction: "Baja la cadera hasta las rodillas."
+        },
+        {
+            id: 'jumpingJacks',
+            name: 'JUMPING JACKS (TIJERAS)',
+            targetReps: 10,
+            calsPerRep: 0.3,
+            instruction: "Abre y cierra brazos y piernas coordinados."
+        },
+        {
+            id: 'sideBends',
+            name: 'INCLINACIÓN LATERAL',
+            targetReps: 8, // 4 por lado
+            calsPerRep: 0.2,
+            instruction: "Inclina el torso de lado a lado sin mover cadera."
+        }
     ];
 
-    connections.forEach(([a, b]) => {
-      ctx.beginPath();
-      ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
-      ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
-      ctx.stroke();
-    });
-  }
+    // Sonido de confirmación
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 500, duration = 100) {
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.1;
+      osc.start();
+      setTimeout(() => osc.stop(), duration);
+    }
 
-  init();
-</script>
+    const CONNECTIONS = [
+      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], 
+      [11,12], [11,13], [13,15], [12,14], [14,16], 
+      [11,23], [12,24], [23,24], 
+      [23,25], [25,27], [24,26], [26,28]
+    ];
+
+    // --- Funciones Auxiliares de Geometría ---
+    function calculateAngle(a, b, c) {
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs(radians * 180.0 / Math.PI);
+      if (angle > 180.0) angle = 360 - angle;
+      return Math.round(angle);
+    }
+
+    // --- Lógica Principal ---
+    async function init() {
+      poseDetector = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+      // Modelo más complejo (2) para mejor precisión en ejercicios variados
+      poseDetector.setOptions({ modelComplexity: 2, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+      poseDetector.onResults(onResults);
+      await setupCamera();
+      startRoutine();
+      
+      const frameLoop = async () => {
+        if (video.readyState >= 2) await poseDetector.send({ image: video });
+        requestAnimationFrame(frameLoop);
+      };
+      frameLoop();
+    }
+
+    async function setupCamera() {
+      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+      // Preferir 720p para mejor detección si es posible
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacing, width: {ideal: 1280}, height: {ideal: 720} }
+      });
+      video.srcObject = stream;
+      // Espejo físico del video
+      video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+      
+      return new Promise(res => {
+        video.onloadedmetadata = () => {
+          video.play();
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          statusEl.innerText = "SISTEMA LISTO. ¡EMPEZAMOS!";
+          res();
+        };
+      });
+    }
+
+    function startRoutine() {
+        currentExIndex = 0;
+        totalCalories = 0;
+        isRoutineActive = true;
+        loadNextExercise();
+        document.getElementById('cal-val').innerText = totalCalories.toFixed(1);
+    }
+
+    function loadNextExercise() {
+        if (currentExIndex < exerciseRoutine.length) {
+            const ex = exerciseRoutine[currentExIndex];
+            repsRemaining = ex.targetReps;
+            exerciseStage = "start";
+            document.getElementById('ex-name').innerText = ex.name;
+            document.getElementById('reps-val').innerText = repsRemaining;
+            guidanceEl.innerText = ex.instruction;
+            guidanceEl.style.opacity = 1;
+            // Ocultar la guía después de 3 segundos
+            setTimeout(() => { guidanceEl.style.opacity = 0; }, 4000);
+            playBeep(600, 300); // Sonido de inicio de ejercicio
+        } else {
+            // Rutina terminada
+            isRoutineActive = false;
+            document.getElementById('ex-name').innerText = "¡RUTINA COMPLETADA!";
+            document.getElementById('reps-val').innerText = "🎉";
+            guidanceEl.innerText = "¡EXCELENTE TRABAJO!";
+            guidanceEl.style.opacity = 1;
+            statusEl.innerText = "USA EL BOTÓN TÁCTIL PARA REINICIAR";
+            playBeep(800, 500);
+        }
+    }
+
+    function completeRep() {
+        repsRemaining--;
+        document.getElementById('reps-val').innerText = repsRemaining;
+        totalCalories += exerciseRoutine[currentExIndex].calsPerRep;
+        document.getElementById('cal-val').innerText = totalCalories.toFixed(1);
+        playBeep(400); // Beep corto por repetición
+
+        if (repsRemaining <= 0) {
+            currentExIndex++;
+            statusEl.innerText = "¡CAMBIO DE EJERCICIO!";
+            setTimeout(loadNextExercise, 1500); // Pequeña pausa entre ejercicios
+        }
+    }
+
+
+    // --- LÓGICA DE DETECCIÓN DE EJERCICIOS ---
+
+    function detectSquats(landmarks) {
+        const hipL = landmarks[23]; const hipR = landmarks[24];
+        const kneeL = landmarks[25]; const kneeR = landmarks[26];
+        
+        if (hipL.visibility < 0.6 || kneeL.visibility < 0.6) return;
+
+        const avgHipY = (hipL.y + hipR.y) / 2;
+        const avgKneeY = (kneeL.y + kneeR.y) / 2;
+
+        // Umbral: Bajar hasta que la cadera esté casi a la altura de la rodilla
+        if (exerciseStage === "start" && avgHipY > avgKneeY - 0.1) {
+            exerciseStage = "down";
+            guidanceEl.innerText = "¡Sube!"; guidanceEl.style.opacity = 1;
+        }
+        if (exerciseStage === "down" && avgHipY < avgKneeY - 0.2) {
+            exerciseStage = "start";
+            guidanceEl.style.opacity = 0;
+            completeRep();
+        }
+    }
+
+    function detectJumpingJacks(landmarks) {
+        const wristL = landmarks[15]; const wristR = landmarks[16];
+        const ankleL = landmarks[27]; const ankleR = landmarks[28];
+        const nose = landmarks[0];
+
+        if(wristL.visibility < 0.5 || ankleL.visibility < 0.5) return;
+
+        // Fase Abierta: Manos arriba de la nariz, pies separados
+        const handsUp = wristL.y < nose.y && wristR.y < nose.y;
+        const feetApart = Math.abs(ankleL.x - ankleR.x) > 0.3; // 0.3 es un ancho relativo
+
+        if (exerciseStage === "start" && handsUp && feetApart) {
+            exerciseStage = "open";
+            guidanceEl.innerText = "¡Cierra!"; guidanceEl.style.opacity = 1;
+        }
+
+        // Fase Cerrada: Manos abajo, pies juntos
+        const handsDown = wristL.y > nose.y + 0.3 && wristR.y > nose.y + 0.3;
+        const feetTogether = Math.abs(ankleL.x - ankleR.x) < 0.15;
+
+        if (exerciseStage === "open" && handsDown && feetTogether) {
+            exerciseStage = "start";
+            guidanceEl.style.opacity = 0;
+            completeRep();
+        }
+    }
+
+    function detectSideBends(landmarks) {
+        const shoulderL = landmarks[11]; const shoulderR = landmarks[12];
+        const hipL = landmarks[23]; const hipR = landmarks[24];
+
+        if(shoulderL.visibility < 0.6 || hipL.visibility < 0.6) return;
+
+        // Calcular la inclinación del torso comparando la diferencia de altura de hombros vs caderas
+        const shoulderSlope = shoulderL.y - shoulderR.y;
+        const hipSlope = hipL.y - hipR.y; // Debe mantenerse relativamente estable
+
+        // Inclinación significativa a un lado (aprox > 0.15 diferencia Y)
+        if (exerciseStage === "start" && Math.abs(shoulderSlope) > 0.15 && Math.abs(hipSlope) < 0.08) {
+            exerciseStage = "bent";
+            guidanceEl.innerText = "Centro"; guidanceEl.style.opacity = 1;
+        }
+        // Vuelta al centro
+        if (exerciseStage === "bent" && Math.abs(shoulderSlope) < 0.05) {
+            exerciseStage = "start";
+            guidanceEl.style.opacity = 0;
+            completeRep();
+        }
+    }
+
+
+    // --- BUCLE PRINCIPAL DE PROCESAMIENTO ---
+    function onResults(results) {
+      ctx.save();
+      // Efecto Ghost (Estela) vs Limpieza normal
+      if (isGhost) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Espejado del Canvas para que coincida con el video CSS
+      if (currentFacing === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      if (results.poseLandmarks) {
+        const landmarks = results.poseLandmarks;
+        
+        // --- 1. PROCESAMIENTO DE EJERCICIOS ---
+        if (isRoutineActive) {
+            const currentExId = exerciseRoutine[currentExIndex].id;
+            if (currentExId === 'squats') detectSquats(landmarks);
+            else if (currentExId === 'jumpingJacks') detectJumpingJacks(landmarks);
+            else if (currentExId === 'sideBends') detectSideBends(landmarks);
+        }
+
+        // --- 2. UX TÁCTIL (Botón Virtual) ---
+        // Usamos la mano derecha física (Landmark 16).
+        // En modo espejo, la mano derecha física tiene una coordenada X pequeña (cerca de 0).
+        // El botón visual está a la derecha (CSS right:20px), pero el área de detección lógica debe coincidir con la mano.
+        const handRPhysical = landmarks[16]; 
+
+        // Área de detección: Esquina superior derecha física (X pequeño, Y pequeño)
+        // Ajustamos los valores para que sea fácil de acertar en la esquina superior.
+        const hitBoxX = 0.25; // Detectar si X es menor a 0.25
+        const hitBoxYTop = 0.02; // Detectar si Y es mayor a 0.02
+        const hitBoxYBot = 0.20; // Detectar si Y es menor a 0.20
+
+        if (handRPhysical.visibility > 0.7 && handRPhysical.x < hitBoxX && handRPhysical.y > hitBoxYTop && handRPhysical.y < hitBoxYBot) {
+            if (!vHovering) { vButtonEl.classList.add('hovered'); vHovering = true; }
+            vFillHeight = Math.min(100, vFillHeight + 3); // Velocidad de carga
+            if (vFillHeight >= 100) { 
+                startRoutine(); // Acción: Reiniciar Rutina
+                vFillHeight = 0; 
+                playBeep(800, 200);
+            }
+        } else {
+             if (vHovering) { vButtonEl.classList.remove('hovered'); vHovering = false; }
+            vFillHeight = Math.max(0, vFillHeight - 5); // Velocidad de descarga
+        }
+        document.getElementById('v-fill').style.height = vFillHeight + "%";
+
+
+        // --- 3. DIBUJADO Y DATOS ---
+        drawSkeleton(landmarks);
+        
+        // Mostrar ángulo del codo derecho como dato extra
+        if(landmarks[12].visibility > 0.5 && landmarks[16].visibility > 0.5) {
+            const elbowAngle = calculateAngle(landmarks[12], landmarks[14], landmarks[16]);
+            document.getElementById('angle-val').innerText = elbowAngle + "°";
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawSkeleton(landmarks) {
+      ctx.strokeStyle = skeletonColor;
+      ctx.lineWidth = 5; ctx.lineCap = "round";
+      ctx.shadowBlur = 15; ctx.shadowColor = skeletonColor; // Más brillo
+
+      CONNECTIONS.forEach(([a, b]) => {
+        const p1 = landmarks[a]; const p2 = landmarks[b];
+        if (p1.visibility > 0.5 && p2.visibility > 0.5) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+          ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+          ctx.stroke();
+        }
+      });
+    }
+
+    // --- Event Listeners de la UI ---
+    document.getElementById('btn-camera').onclick = async () => {
+      currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
+      await setupCamera();
+    };
+    document.getElementById('btn-ghost').onclick = function() {
+        isGhost = !isGhost;
+        // Pequeño feedback visual en el botón
+        this.style.background = isGhost ? "#00f2ff" : "rgba(255,255,255,0.15)";
+        this.style.color = isGhost ? "#000" : "#fff";
+    };
+    document.getElementById('btn-color').onclick = () => {
+      const colors = ["#00f2ff", "#ff00ff", "#39ff14", "#ffea00", "#ff3333"];
+      skeletonColor = colors[Math.floor(Math.random() * colors.length)];
+      document.getElementById('status-bar').style.borderColor = skeletonColor;
+      document.getElementById('status-bar').style.color = skeletonColor;
+    };
+
+    // Iniciar la aplicación
+    init();
+  </script>
+</body>
+</html>
 
