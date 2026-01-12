@@ -3,238 +3,256 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>AI Coach Ultra - Stability Pro</title>
+  <title>AI Coach Sensei Pro</title>
   <style>
-    :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; --warning: #ffcc00; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+    :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; --dark: #0a0a0a; }
+    * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+    body { background: #000; color: white; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
     
-    /* ESPEJO PERFECTO */
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); filter: brightness(0.5); z-index: 1; }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+    /* CAPAS DE VIDEO Y CANVAS */
+    #viewport { position: relative; width: 100vw; height: 100vh; background: #000; display: flex; align-items: center; justify-content: center; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.6; }
+    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; }
 
-    /* HUD SUPERIOR */
-    #hud-top {
-      position: absolute; top: 20px; width: 100%; padding: 0 20px;
-      display: none; justify-content: space-between; align-items: center; z-index: 100;
-    }
-    .timer-box { background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 50px; border: 2px solid var(--neon); font-size: 24px; font-weight: bold; }
-    .progress-bar { position: absolute; top: 0; left: 0; height: 5px; background: var(--neon); width: 0%; transition: 1s linear; }
+    /* INTERFAZ HUD */
+    #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 30px; z-index: 10; display: none; pointer-events: none; }
+    .stats-container { display: flex; justify-content: space-between; align-items: flex-start; }
+    .stat-card { background: rgba(0,0,0,0.7); padding: 15px; border-radius: 15px; border-left: 4px solid var(--neon); backdrop-filter: blur(10px); min-width: 120px; }
+    .stat-value { font-size: 32px; font-weight: 900; display: block; color: #fff; }
+    .stat-label { font-size: 10px; text-transform: uppercase; color: var(--neon); letter-spacing: 1px; }
 
-    /* COACH FEEDBACK */
-    #coach-overlay {
-      position: absolute; bottom: 120px; width: 100%; text-align: center; z-index: 100;
-      pointer-events: none; transition: 0.3s;
-    }
-    .msg-tag { background: var(--accent); color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 1.2rem; display: inline-block; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+    /* BARRA DE PROGRESO */
+    #timer-bar-container { position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: rgba(255,255,255,0.1); z-index: 20; }
+    #timer-bar { width: 100%; height: 100%; background: var(--neon); transition: width 1s linear; box-shadow: 0 0 15px var(--neon); }
 
-    /* MENU Y SUMARIO */
-    #overlay-screen {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.95);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200;
-    }
-    .card { background: #111; border: 1px solid #333; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 400px; cursor: pointer; transition: 0.3s; }
-    .card:hover { border-color: var(--neon); transform: translateY(-5px); }
+    /* OVERLAYS (MENÚ Y CARGA) */
+    .overlay { position: fixed; inset: 0; background: var(--dark); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+    .btn-start { background: var(--neon); color: #000; border: none; padding: 20px 50px; border-radius: 50px; font-size: 1.5rem; font-weight: 900; cursor: pointer; transition: 0.3s; box-shadow: 0 0 30px rgba(0,242,255,0.4); }
+    .btn-start:hover { transform: scale(1.1); box-shadow: 0 0 50px var(--neon); }
     
+    /* FEEDBACK DINÁMICO */
+    #feedback-box { position: absolute; bottom: 150px; width: 100%; text-align: center; z-index: 50; transition: 0.3s; opacity: 0; transform: translateY(20px); }
+    .feedback-pill { background: var(--accent); color: white; padding: 12px 30px; border-radius: 50px; font-weight: bold; font-size: 1.2rem; display: inline-block; }
+
     .hidden { display: none !important; }
-    #stats-summary { text-align: center; line-height: 2; }
   </style>
 </head>
 <body>
 
-  <div id="video-container">
-    <div class="progress-bar" id="session-bar"></div>
+  <div id="start-screen" class="overlay">
+    <h1 style="font-size: 3rem; margin-bottom: 10px; color: var(--neon);">SENSEI AI</h1>
+    <p style="color: #888; margin-bottom: 40px; max-width: 300px;">Entrenador biomecánico profesional con visión artificial</p>
+    <button class="btn-start" onclick="initApp()">INICIAR</button>
+  </div>
+
+  <div id="end-screen" class="overlay hidden">
+    <h1 style="color: var(--zen); margin-bottom: 20px;">¡SESIÓN FINALIZADA!</h1>
+    <div id="results-box" style="margin-bottom: 30px; font-size: 1.2rem; line-height: 2;"></div>
+    <button class="btn-start" style="background: white;" onclick="location.reload()">REINTENTAR</button>
+  </div>
+
+  <div id="viewport">
+    <div id="timer-bar-container"><div id="timer-bar"></div></div>
+    
+    <div id="hud">
+      <div class="stats-container">
+        <div class="stat-card">
+          <span class="stat-label">Repeticiones</span>
+          <span id="ui-reps" class="stat-value">0</span>
+        </div>
+        <div class="stat-card" style="border-color: var(--accent);">
+          <span class="stat-label">Tiempo</span>
+          <span id="ui-timer" class="stat-value">30s</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="feedback-box">
+      <div class="feedback-pill" id="ui-msg">¡CALIBRANDO!</div>
+    </div>
+
     <video id="video" playsinline muted></video>
     <canvas id="canvas"></canvas>
-  </div>
-
-  <div id="hud-top">
-    <div class="timer-box" id="clock">00:30</div>
-    <div style="text-align: right;">
-        <small style="display:block; color:var(--neon)">REPS</small>
-        <span id="rep-count" style="font-size:32px; font-weight:900;">0</span>
-    </div>
-  </div>
-
-  <div id="coach-overlay" class="hidden">
-    <div class="msg-tag" id="coach-msg">¡PREPÁRATE!</div>
-  </div>
-
-  <div id="overlay-screen">
-    <div id="menu-content">
-        <h1 style="margin-bottom:20px; color:var(--neon)">AI TRAINER PRO</h1>
-        <div class="card" onclick="launchApp('fitness')">
-            <h2>🔥 ENTRENAMIENTO HIIT</h2>
-            <p>Sentadillas (30 seg)</p>
-        </div>
-    </div>
-    <div id="summary-content" class="hidden">
-        <h1 style="color:var(--zen)">¡SESIÓN COMPLETADA!</h1>
-        <div id="stats-summary"></div>
-        <button class="card" style="margin-top:20px" onclick="location.reload()">REPETIR</button>
-    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
 
   <script>
     const state = {
-        isRunning: false,
+        active: false,
         reps: 0,
-        timer: 30,
+        timeLeft: 30,
         stage: 'up',
-        lastSpeakTime: 0,
-        qualityLog: [],
-        smoothKnee: 0
+        lastSpeak: 0,
+        history: [],
+        bestAngle: 180,
+        totalPerfect: 0
     };
 
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    const dom = {
+        video: document.getElementById('video'),
+        canvas: document.getElementById('canvas'),
+        ctx: document.getElementById('canvas').getContext('2d'),
+        timerBar: document.getElementById('timer-bar')
+    };
 
-    // --- MOTOR DE VOZ (ANTI-SPAM) ---
-    function speak(text) {
-        const now = Date.now();
-        if (now - state.lastSpeakTime < 3500) return; // Esperar 3.5s entre frases
+    // --- MEJORA 1: MOTOR DE VOZ INTELIGENTE ---
+    function coachTalk(text, force = false) {
+        if (!force && Date.now() - state.lastSpeak < 3000) return;
+        state.lastSpeak = Date.now();
         
-        state.lastSpeakTime = now;
-        document.getElementById('coach-msg').innerText = text.toUpperCase();
-        document.getElementById('coach-overlay').classList.remove('hidden');
+        const msg = document.getElementById('ui-msg');
+        msg.innerText = text.toUpperCase();
+        document.getElementById('feedback-box').style.opacity = 1;
+        document.getElementById('feedback-box').style.transform = "translateY(0)";
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 1.1;
-        window.speechSynthesis.speak(utterance);
-        
-        setTimeout(() => { document.getElementById('coach-overlay').classList.add('hidden'); }, 3000);
+        const speech = new SpeechSynthesisUtterance(text);
+        speech.lang = 'es-ES';
+        speech.rate = 1.2;
+        window.speechSynthesis.speak(speech);
+
+        setTimeout(() => {
+            document.getElementById('feedback-box').style.opacity = 0;
+            document.getElementById('feedback-box').style.transform = "translateY(20px)";
+        }, 2500);
     }
 
-    // --- INICIALIZACIÓN ---
-    async function setupCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-        video.srcObject = stream;
-        return new Promise(r => video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            r();
-        });
+    // --- MEJORA 2: CÁLCULO DE ÁNGULOS (BIOMECÁNICA) ---
+    function findAngle(p1, p2, p3) {
+        const r12 = Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2));
+        const r23 = Math.sqrt(Math.pow(p3.x-p2.x, 2) + Math.pow(p3.y-p2.y, 2));
+        const r13 = Math.sqrt(Math.pow(p3.x-p1.x, 2) + Math.pow(p3.y-p1.y, 2));
+        const angle = Math.acos((Math.pow(r12, 2) + Math.pow(r23, 2) - Math.pow(r13, 2)) / (2 * r12 * r23));
+        return angle * (180 / Math.PI);
     }
 
-    async function launchApp(mode) {
-        document.getElementById('overlay-screen').classList.add('hidden');
-        document.getElementById('hud-top').style.display = 'flex';
-        speak("Prepárate. Empezamos en breve. Aléjate un poco.");
-        
-        // Timer de 30 segundos
-        const countdown = setInterval(() => {
-            state.timer--;
-            document.getElementById('clock').innerText = `00:${state.timer < 10 ? '0'+state.timer : state.timer}`;
-            document.getElementById('session-bar').style.width = `${((30 - state.timer)/30)*100}%`;
+    // --- REPARACIÓN DE PANTALLA NEGRA ---
+    async function initApp() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('hud').style.display = 'block';
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            dom.video.srcObject = stream;
+            await dom.video.play();
             
-            if (state.timer <= 0) {
-                clearInterval(countdown);
-                finishSession();
+            // Ajustar canvas al tamaño real del video
+            dom.canvas.width = dom.video.videoWidth;
+            dom.canvas.height = dom.video.videoHeight;
+
+            startPoseAI();
+            startCountdown();
+        } catch (err) {
+            alert("Error al acceder a la cámara. Por favor, permite los permisos.");
+        }
+    }
+
+    function startCountdown() {
+        coachTalk("¡Prepárate! Aléjate para que vea tus pies.");
+        const interval = setInterval(() => {
+            state.timeLeft--;
+            document.getElementById('ui-timer').innerText = state.timeLeft + "s";
+            dom.timerBar.style.width = (state.timeLeft / 30 * 100) + "%";
+
+            if (state.timeLeft <= 0) {
+                clearInterval(interval);
+                showSummary();
             }
         }, 1000);
-
-        state.isRunning = true;
+        state.active = true;
     }
 
-    function finishSession() {
-        state.isRunning = false;
-        window.speechSynthesis.cancel();
-        speak("Entrenamiento terminado. Excelente trabajo.");
-        
-        document.getElementById('hud-top').style.display = 'none';
-        document.getElementById('overlay-screen').classList.remove('hidden');
-        document.getElementById('menu-content').classList.add('hidden');
-        document.getElementById('summary-content').classList.remove('hidden');
-        
-        const avgQual = state.qualityLog.length > 0 ? (state.qualityLog.reduce((a,b)=>a+b)/state.qualityLog.length).toFixed(0) : 0;
-        document.getElementById('stats-summary').innerHTML = `
-            <p style="font-size:2rem">${state.reps} Repeticiones</p>
-            <p>Calidad Promedio: ${avgQual}%</p>
-            <p>Precisión de técnica: ${avgQual > 70 ? 'ALTA' : 'MEJORABLE'}</p>
+    function showSummary() {
+        state.active = false;
+        document.getElementById('end-screen').classList.remove('hidden');
+        document.getElementById('results-box').innerHTML = `
+            ⭐ Repeticiones: <b>${state.reps}</b><br>
+            🎯 Calidad Media: <b>${state.totalPerfect > 0 ? 'ALTA' : 'MEDIA'}</b><br>
+            🔥 Mejor Ángulo: <b>${state.bestAngle.toFixed(0)}°</b>
         `;
+        coachTalk("Entrenamiento completado. ¡Buen trabajo!");
     }
 
-    // --- PROCESAMIENTO IA ---
-    function onResults(results) {
-        ctx.save();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-
-        if (results.poseLandmarks) {
-            const lm = results.poseLandmarks;
-            drawSkeleton(lm);
-
-            if (state.isRunning) {
-                analyzeSquat(lm);
-            }
-        }
-        ctx.restore();
-    }
-
-    function analyzeSquat(lm) {
-        const hip = lm[24].y;
-        const knee = lm[26].y;
-        const shoulder = lm[12].y;
-
-        // Suavizado de datos para evitar saltos (EMA)
-        state.smoothKnee = (knee * 0.2) + (state.smoothKnee * 0.8);
-
-        const currentROM = Math.min(Math.max((hip - shoulder) / (knee - shoulder) * 100, 0), 100);
-        
-        // Lógica de repetición
-        if (state.stage === 'up' && hip > knee - 0.05) {
-            state.stage = 'down';
-        }
-
-        if (state.stage === 'down' && hip < knee - 0.15) {
-            state.reps++;
-            state.stage = 'up';
-            state.qualityLog.push(currentROM);
-            document.getElementById('rep-count').innerText = state.reps;
-            
-            if(currentROM > 85) {
-                speak("¡Perfecta!");
-            } else {
-                speak("Buena, pero intenta bajar un poco más");
-            }
-        }
-    }
-
-    function drawSkeleton(lm) {
-        ctx.strokeStyle = state.stage === 'down' ? "var(--zen)" : "white";
-        ctx.lineWidth = 5;
-        ctx.lineJoin = 'round';
-        
-        const connections = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
-        connections.forEach(([a,b]) => {
-            if(lm[a].visibility > 0.6 && lm[b].visibility > 0.6) {
-                ctx.beginPath();
-                ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
-                ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
-                ctx.stroke();
-            }
-        });
-    }
-
-    async function main() {
-        await setupCamera();
+    function startPoseAI() {
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
+        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
         pose.onResults(onResults);
-        
+
         const detect = async () => {
-            await pose.send({ image: video });
+            if (state.active) await pose.send({ image: dom.video });
             requestAnimationFrame(detect);
         };
         detect();
     }
 
-    main();
+    function onResults(results) {
+        if (!results.poseLandmarks) return;
+        const lm = results.poseLandmarks;
+        const ctx = dom.ctx;
+
+        ctx.save();
+        ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
+        
+        // Efecto espejo para el dibujo
+        ctx.translate(dom.canvas.width, 0);
+        ctx.scale(-1, 1);
+
+        // --- MEJORA 3: LÓGICA DE SENTADILLA PROFESIONAL ---
+        // Ángulo de la rodilla derecha (Cadera 24, Rodilla 26, Tobillo 28)
+        const kneeAngle = findAngle(lm[24], lm[26], lm[28]);
+        
+        if (kneeAngle < state.bestAngle) state.bestAngle = kneeAngle;
+
+        // Visualización del ángulo en la rodilla
+        ctx.fillStyle = "white";
+        ctx.font = "bold 30px Arial";
+        ctx.fillText(Math.round(kneeAngle) + "°", lm[26].x * dom.canvas.width + 20, lm[26].y * dom.canvas.height);
+
+        // Lógica de conteo
+        if (state.stage === 'up' && kneeAngle < 100) {
+            state.stage = 'down';
+        }
+        if (state.stage === 'down' && kneeAngle > 150) {
+            state.reps++;
+            state.stage = 'up';
+            document.getElementById('ui-reps').innerText = state.reps;
+            
+            if (kneeAngle > 165) {
+                coachTalk("¡Excelente extensión!");
+                state.totalPerfect++;
+            } else {
+                coachTalk("¡Bien! Sigue así.");
+            }
+        }
+
+        drawSkeleton(ctx, lm, kneeAngle);
+        ctx.restore();
+    }
+
+    function drawSkeleton(ctx, lm, angle) {
+        ctx.strokeStyle = angle < 100 ? "var(--zen)" : "white";
+        ctx.lineWidth = 6;
+        const connections = [[11,12], [11,23], [12,24], [23,24], [24,26], [26,28], [23,25], [25,27], [11,13], [13,15], [12,14], [14,16]];
+        
+        connections.forEach(([a, b]) => {
+            if (lm[a].visibility > 0.5 && lm[b].visibility > 0.5) {
+                ctx.beginPath();
+                ctx.moveTo(lm[a].x * dom.canvas.width, lm[a].y * dom.canvas.height);
+                ctx.lineTo(lm[b].x * dom.canvas.width, lm[b].y * dom.canvas.height);
+                ctx.stroke();
+            }
+        });
+
+        // Puntos de articulación
+        ctx.fillStyle = "var(--neon)";
+        [24, 26, 28].forEach(i => {
+            ctx.beginPath();
+            ctx.arc(lm[i].x * dom.canvas.width, lm[i].y * dom.canvas.height, 8, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
   </script>
 </body>
 </html>
