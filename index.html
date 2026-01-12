@@ -3,62 +3,72 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>AI Coach Pro - Feedback en Vivo</title>
+  <title>AI Coach Mirror - Pro</title>
   <style>
     :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; --warning: #ffcc00; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; position: fixed; width: 100%; height: 100%; }
     
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; filter: brightness(0.7); }
+    /* ESPEJO: Invertimos el video para que se sienta natural */
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); filter: brightness(0.6); }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
 
-    /* --- MENSAJES DEL ENTRENADOR --- */
+    /* BURBUJA DE CONSEJOS */
     #coach-bubble {
-      position: absolute; top: 120px; left: 50%; transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.8); border: 2px solid var(--neon);
-      padding: 15px 25px; border-radius: 20px; z-index: 100;
-      text-align: center; max-width: 80%; transition: 0.3s; opacity: 0;
+      position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85); border: 2px solid var(--neon);
+      padding: 20px; border-radius: 25px; z-index: 100;
+      text-align: center; width: 85%; max-width: 400px; transition: 0.3s; opacity: 0;
+      box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
     }
-    #coach-text { font-size: 1.2rem; font-weight: bold; color: white; }
+    #coach-text { font-size: 1.1rem; font-weight: bold; color: var(--neon); }
 
-    /* --- PANTALLAS --- */
+    /* HUD */
+    #hud {
+      position: absolute; top: 20px; width: 100%; padding: 0 20px;
+      display: none; justify-content: space-between; z-index: 150;
+    }
+    .stat { background: rgba(0,0,0,0.8); padding: 15px; border-radius: 15px; border-top: 3px solid var(--neon); text-align: center; min-width: 110px;}
+    .value { font-size: 24px; font-weight: bold; display: block; }
+
+    /* MENU */
     #main-menu {
       position: absolute; inset: 0; z-index: 200;
       background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
       align-items: center; justify-content: center;
     }
-    .card {
+    .btn-action {
       background: rgba(255,255,255,0.05); border: 2px solid var(--neon);
-      padding: 30px; border-radius: 20px; text-align: center; margin: 10px; cursor: pointer;
+      padding: 25px; border-radius: 20px; text-align: center; margin: 15px; cursor: pointer;
+      width: 280px; transition: 0.3s;
     }
+    .btn-action:hover { background: var(--accent); }
 
-    /* --- HUD --- */
-    #hud {
-      position: absolute; top: 20px; width: 100%; padding: 0 20px;
-      display: none; justify-content: space-between; z-index: 150;
+    #btn-exit {
+        position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+        padding: 12px 30px; background: var(--danger); border: none; color: white;
+        border-radius: 50px; font-weight: bold; z-index: 160; display: none;
     }
-    .stat { background: rgba(0,0,0,0.8); padding: 15px; border-radius: 15px; border-bottom: 4px solid var(--neon); text-align: center; min-width: 100px;}
 
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <div id="coach-bubble">
-    <div id="coach-text">¡Prepárate!</div>
-  </div>
+  <div id="coach-bubble"><div id="coach-text">Cargando...</div></div>
 
   <div id="main-menu">
-    <h1 style="color: var(--neon); margin-bottom: 30px;">AI COACH PERSONAL</h1>
-    <div onclick="startMode('fitness')" class="card"><h2>💪 ENTRENAR</h2><p>Análisis de técnica en vivo</p></div>
-    <div onclick="startMode('posture')" class="card"><h2>🧘 POSTURA</h2><p>Corrección de columna</p></div>
-    <p style="margin-top: 20px; color: #888;">Levanta ambas manos para confirmar</p>
+    <h1 style="color: var(--neon); margin-bottom: 30px; letter-spacing: 2px;">AI COACH SENSEI</h1>
+    <div onclick="startMode('fitness')" class="btn-action"><h2>🏋️ ENTRENAMIENTO</h2><p>Sentadillas y Técnica</p></div>
+    <div onclick="startMode('posture')" class="btn-action"><h2>🧘 POSTURA SMART</h2><p>Corrección de Espalda</p></div>
   </div>
 
   <div id="hud">
-    <div class="stat"><small>REPETICIONES</small><div id="v-reps">0</div></div>
-    <div class="stat"><small>CALIDAD</small><div id="v-quality">--</div></div>
+    <div class="stat"><small>MÉTRICA</small><span id="v-reps" class="value">0</span></div>
+    <div class="stat"><small>ESTADO</small><span id="v-quality" class="value">--</span></div>
   </div>
+
+  <button id="btn-exit" onclick="exitToMenu()">VOLVER AL MENÚ</button>
 
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
@@ -71,27 +81,27 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    const btnExit = document.getElementById('btn-exit');
     
     let poseDetector;
     let isRunning = false;
     let currentMode = null;
     let reps = 0;
     let stage = "up";
-    let lastMessage = "";
+    let lastSpoken = "";
 
-    // --- FUNCIÓN DE VOZ ---
-    function speak(text) {
-        if (text === lastMessage) return; // No repetir lo mismo seguido
-        lastMessage = text;
-        coachText.innerText = text;
+    // VOZ DEL ENTRENADOR
+    function coachSay(msg) {
+        if (msg === lastSpoken) return;
+        lastSpoken = msg;
+        coachText.innerText = msg;
         coachBubble.style.opacity = 1;
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 1.1;
-        window.speechSynthesis.speak(utterance);
-        
-        setTimeout(() => { coachBubble.style.opacity = 0; }, 3000);
+
+        const speech = new SpeechSynthesisUtterance(msg);
+        speech.lang = 'es-ES';
+        window.speechSynthesis.speak(speech);
+
+        setTimeout(() => { if(lastSpoken === msg) coachBubble.style.opacity = 0; }, 4000);
     }
 
     async function init() {
@@ -99,9 +109,9 @@
       poseDetector.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7 });
       poseDetector.onResults(onResults);
       
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
       video.srcObject = stream;
-      video.onloadedmetadata = () => { video.play(); canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+      video.onloadedmetadata = () => { video.play(); resize(); };
       
       const loop = async () => {
         if (video.readyState >= 2) await poseDetector.send({ image: video });
@@ -113,54 +123,48 @@
     function onResults(results) {
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+      
+      // Sincronizamos el dibujo con el video invertido
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
 
       if (results.poseLandmarks) {
         const lm = results.poseLandmarks;
         drawSkeleton(lm);
-        checkVisibility(lm);
 
         if (isRunning) {
-            if (currentMode === 'fitness') processFitness(lm);
-            if (currentMode === 'posture') processPosture(lm);
-        } else {
-            // Gesto para iniciar: Manos arriba
-            if (lm[15].y < lm[0].y && lm[16].y < lm[0].y) startMode('fitness');
+            if (currentMode === 'fitness') analyzeFitness(lm);
+            if (currentMode === 'posture') analyzePosture(lm);
         }
       }
       ctx.restore();
     }
 
-    // --- RECOMENDACIONES DE FITNESS ---
-    function processFitness(lm) {
+    function analyzeFitness(lm) {
+        // Lógica de Sentadillas: Cadera (24) vs Rodilla (26)
         const hip = lm[24].y;
         const knee = lm[26].y;
-        const ankle = lm[28].y;
+        const depth = hip - knee;
 
-        // 1. Detección de técnica (Sentadilla)
-        const squatDepth = hip - knee;
-
-        if (stage === "up") {
-            if (squatDepth > 0.1) { // Empezó a bajar
-                stage = "down";
-            }
+        if (stage === "up" && depth > 0.05) {
+            stage = "down";
         }
 
         if (stage === "down") {
-            if (squatDepth < -0.05) { // No ha bajado lo suficiente
-                document.getElementById('v-quality').innerText = "POCO PROFUNDA";
-                document.getElementById('v-quality').style.color = "var(--warning)";
-            } else {
-                document.getElementById('v-quality').innerText = "BUENA";
+            if (depth > 0.15) { // Profundidad correcta
+                document.getElementById('v-quality').innerText = "¡EXCELENTE!";
                 document.getElementById('v-quality').style.color = "var(--zen)";
+            } else {
+                document.getElementById('v-quality').innerText = "BAJA MÁS";
+                document.getElementById('v-quality').style.color = "var(--warning)";
             }
 
-            if (hip < knee - 0.1) { // Volvió a subir
-                if (squatDepth < 0.05) {
-                    speak("Intenta bajar un poco más la próxima vez");
-                } else {
+            if (hip < knee - 0.1) { // Subió
+                if (depth > 0.12) {
                     reps++;
-                    speak("¡Muy buena! Van " + reps);
+                    coachSay("¡Muy buena repetición!");
+                } else {
+                    coachSay("Esa no contó, baja un poco más la cadera");
                 }
                 stage = "up";
             }
@@ -168,42 +172,26 @@
         document.getElementById('v-reps').innerText = reps;
     }
 
-    // --- RECOMENDACIONES DE POSTURA ---
-    function processPosture(lm) {
-        const ear = lm[8];
-        const shoulder = lm[12];
-        const hip = lm[24];
-
-        // Análisis de alineación vertical
-        const neckLean = Math.abs(ear.x - shoulder.x);
-        const backLean = Math.abs(shoulder.x - hip.x);
-
-        if (neckLean > 0.15) {
-            speak("Lleva tu cabeza hacia atrás, estás forzando el cuello");
-            video.style.filter = "sepia(1) saturate(3)";
-        } else if (backLean > 0.1) {
-            speak("Trata de mantener la espalda recta");
-            video.style.filter = "hue-rotate(90deg)";
+    function analyzePosture(lm) {
+        // Alineación Oreja (8) y Hombro (12)
+        const neckLean = Math.abs(lm[8].x - lm[12].x);
+        
+        if (neckLean > 0.12) {
+            coachSay("Cuidado, estás inclinando mucho el cuello hacia adelante");
+            document.getElementById('v-quality').innerText = "CORREGIR";
+            document.getElementById('v-quality').style.color = "var(--danger)";
         } else {
-            video.style.filter = "none";
-            document.getElementById('v-quality').innerText = "EXCELENTE";
+            document.getElementById('v-quality').innerText = "RECTA";
+            document.getElementById('v-quality').style.color = "var(--zen)";
         }
-    }
-
-    // --- VERIFICACIÓN DE VISIBILIDAD ---
-    function checkVisibility(lm) {
-        const feetVisible = lm[27].visibility > 0.7 && lm[28].visibility > 0.7;
-        if (!feetVisible && currentMode === 'fitness') {
-            coachBubble.style.opacity = 1;
-            coachText.innerText = "⚠️ Aléjate, no veo tus pies";
-        }
+        document.getElementById('v-reps').innerText = "ESPALDA";
     }
 
     function drawSkeleton(lm) {
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 3;
-        const parts = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
-        parts.forEach(([a,b]) => {
+        ctx.strokeStyle = "rgba(0, 242, 255, 0.8)";
+        ctx.lineWidth = 4;
+        const connections = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
+        connections.forEach(([a,b]) => {
             if(lm[a].visibility > 0.5 && lm[b].visibility > 0.5) {
                 ctx.beginPath();
                 ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
@@ -214,15 +202,29 @@
     }
 
     function startMode(mode) {
-        if (isRunning) return;
         isRunning = true;
         currentMode = mode;
         reps = 0;
         document.getElementById('main-menu').classList.add('hidden');
         document.getElementById('hud').style.display = 'flex';
-        speak("Iniciando modo " + mode + ". ¡Vamos a mejorar esa técnica!");
+        btnExit.style.display = 'block';
+        coachSay("Iniciando. Aléjate un poco para que pueda ver todo tu cuerpo.");
     }
 
+    function exitToMenu() {
+        isRunning = false;
+        document.getElementById('main-menu').classList.remove('hidden');
+        document.getElementById('hud').style.display = 'none';
+        btnExit.style.display = 'none';
+        window.speechSynthesis.cancel();
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener('resize', resize);
     init();
   </script>
 </body>
