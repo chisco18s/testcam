@@ -3,81 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Spectral AI - REAL NIGHT VISION</title>
+    <title>Spectral AI - Alert System</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
-        :root { --main: #00ff41; --danger: #ff3c3c; --ghost: #00f2ff; }
+        :root { --main: #00ff41; --danger: #ff0000; --warn: #ffcc00; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-        body { background: #000; color: var(--main); overflow: hidden; position: fixed; width: 100vw; height: 100vh; }
+        body { background: #000; color: var(--main); overflow: hidden; width: 100vw; height: 100vh; }
 
-        /* --- FILTROS REALES --- */
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transition: filter 0.3s; }
-        
-        .filter-normal { filter: brightness(0.6) grayscale(0.5); }
-        
-        /* Visión Nocturna Real: Amplifica brillo, añade tinte verde y contraste extremo */
-        .filter-night { filter: brightness(1.8) contrast(1.5) sepia(100%) hue-rotate(80deg) saturate(4) blur(0.2px); }
-        
-        /* Térmica: Mapa de calor simulado */
-        .filter-thermal { filter: brightness(0.8) contrast(2.5) hue-rotate(240deg) saturate(8); }
-        
-        /* Espectro: Inversión de luminancia */
-        .filter-spectro { filter: invert(1) hue-rotate(180deg) brightness(0.7); }
-
-        /* Capa de Grano y Ruido (solo visible en nocturna) */
-        #noise-overlay {
-            position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0.15; display: none;
-            background: url('https://media.giphy.com/media/oEI9uWUicG7E4/giphy.gif');
-        }
+        /* Filtros */
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        .filter-normal { filter: brightness(0.5) contrast(1.2); }
+        .filter-night { filter: brightness(2) sepia(100%) hue-rotate(80deg) saturate(5); }
+        .filter-thermal { filter: brightness(0.8) contrast(3) hue-rotate(240deg) saturate(6); }
+        .filter-spectro { filter: invert(1) hue-rotate(180deg); }
 
         #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
-        /* HUD */
-        #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 45px 10px 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); border-bottom: 1px solid var(--main); }
-        .value { font-size: 1.2rem; font-weight: bold; color: white; }
+        /* HUD Superior */
+        #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 45px 10px 15px; background: rgba(0,0,0,0.8); border-bottom: 1px solid var(--main); }
+        .value { font-size: 1.2rem; font-weight: bold; color: #fff; }
 
-        #filter-bar { position: absolute; top: 110px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 30; padding: 10px; }
-        .btn { background: rgba(0,20,0,0.85); border: 1px solid var(--main); color: var(--main); padding: 10px 14px; font-size: 11px; border-radius: 4px; font-weight: bold; }
-        .btn.active { background: var(--main); color: #000; box-shadow: 0 0 10px var(--main); }
+        /* Botonera */
+        #ui-layer { position: absolute; top: 110px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 30; }
+        .btn-group { display: flex; gap: 5px; }
+        .btn { background: rgba(0,20,0,0.9); border: 1px solid var(--main); color: var(--main); padding: 8px 12px; font-size: 10px; border-radius: 4px; font-weight: bold; }
+        .btn.active { background: var(--main); color: #000; }
+        .btn-capture { background: var(--danger); color: white; border: none; padding: 10px 20px; font-size: 12px; border-radius: 5px; margin-top: 5px; box-shadow: 0 0 10px var(--danger); }
 
-        #registry { position: absolute; bottom: 130px; left: 15px; right: 15px; height: 100px; background: rgba(0,10,0,0.6); border-left: 4px solid var(--danger); padding: 10px; z-index: 25; overflow: hidden; font-size: 11px; display: flex; flex-direction: column-reverse; }
-        .log-name { color: var(--danger); font-weight: bold; }
+        /* Consola de Alertas */
+        #registry { position: absolute; bottom: 130px; left: 15px; right: 15px; height: 100px; background: rgba(255,0,0,0.05); border-left: 4px solid var(--danger); padding: 10px; z-index: 25; overflow: hidden; display: flex; flex-direction: column-reverse; font-size: 11px; border-top: 1px solid rgba(255,0,0,0.2); }
+        .log-alert { color: var(--danger); font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
 
-        .entity-tag { position: absolute; color: white; font-weight: bold; padding: 4px 10px; border: 1px solid var(--danger); background: rgba(255,0,0,0.5); z-index: 40; font-size: 12px; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap; }
+        .entity-tag { position: absolute; color: white; font-weight: bold; padding: 4px 10px; border: 2px solid var(--danger); background: rgba(0,0,0,0.8); z-index: 40; font-size: 12px; transform: translate(-50%, -100%); pointer-events: none; }
 
-        .bottom-ui { position: fixed; bottom: 0; width: 100%; height: 90px; background: #000; z-index: 50; display: flex; justify-content: space-between; align-items: center; padding: 0 20px 10px; border-top: 1px solid var(--main); }
+        .bottom-ui { position: fixed; bottom: 0; width: 100%; height: 90px; background: #000; z-index: 50; display: flex; justify-content: space-between; align-items: center; padding: 0 20px 20px; border-top: 1px solid var(--main); }
         #start-screen { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
     </style>
 </head>
 <body>
 
 <div id="start-screen">
-    <h1 style="color:var(--main); letter-spacing: 6px; margin-bottom: 30px;">SPECTRAL AI v4.0</h1>
-    <button onclick="init()" class="btn" style="font-size: 1.5rem; padding: 20px 40px;">ARRANCAR SISTEMA</button>
+    <h1 style="color:var(--danger); letter-spacing: 5px; margin-bottom: 30px;">SPECTRAL AI v5.0</h1>
+    <button onclick="init()" class="btn" style="font-size: 1.5rem; padding: 20px 40px;">INICIAR ESCÁNER</button>
 </div>
 
-<div id="noise-overlay"></div>
 <video id="video" class="filter-normal" playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-    <div style="text-align:center"><small>EMF</small><div id="emf" class="value">0.00</div></div>
-    <div style="text-align:center"><small>DETECTOR</small><div id="threat" class="value" style="color:var(--danger)">PASIVO</div></div>
+    <div style="text-align:center"><small>EMF LEVEL</small><div id="emf" class="value">0.00</div></div>
+    <div style="text-align:center"><small>ALERTA</small><div id="threat" class="value" style="color:var(--main)">IDLE</div></div>
 </div>
 
-<div id="filter-bar">
-    <button class="btn active" onclick="setFilter('normal', this)">NORMAL</button>
-    <button class="btn" onclick="setFilter('night', this)">NIGHT VISION</button>
-    <button class="btn" onclick="setFilter('thermal', this)">TERMICA</button>
-    <button class="btn" onclick="setFilter('spectro', this)">ESPECTRO</button>
+<div id="ui-layer">
+    <div class="btn-group">
+        <button class="btn active" onclick="setFilter('normal', this)">NORMAL</button>
+        <button class="btn" onclick="setFilter('night', this)">NIGHT V.</button>
+        <button class="btn" onclick="setFilter('thermal', this)">THERMAL</button>
+        <button class="btn" onclick="setFilter('spectro', this)">SPECTRO</button>
+    </div>
+    <button class="btn-capture" onclick="takePhoto()">📷 CAPTURAR EVIDENCIA</button>
 </div>
 
 <div id="registry"></div>
 <div id="entity-tag" class="entity-tag" style="display:none"></div>
 
 <div class="bottom-ui">
-    <div style="font-size: 10px;">UNIT: MOBILE-01<br>STATUS: <span style="color:var(--main)">ONLINE</span></div>
-    <div style="text-align:right"><small>RELOJ SISTEMA</small><br><span id="clock" style="font-size: 18px;">00:00:00</span></div>
+    <div style="font-size: 10px;">DB-CONNECTED: <span style="color:var(--main)">TRUE</span><br>SENSORS: ACTIVE</div>
+    <div style="text-align:right"><small>TIMESTAMP</small><br><span id="clock" style="font-size: 18px; color:#fff">00:00:00</span></div>
 </div>
 
 <script>
@@ -86,94 +79,93 @@
     const ctx = canvas.getContext('2d');
     const registry = document.getElementById('registry');
     const tag = document.getElementById('entity-tag');
-    const noise = document.getElementById('noise-overlay');
-
-    const ENTITIES = [
-        { n: "Paimon", d: "Rey infernal identificado." },
-        { n: "Valak", d: "Presencia demoníaca de alto nivel." },
-        { n: "The Hat Man", d: "Entidad de sombra persistente." },
-        { n: "Zozo", d: "Entidad de frecuencia hostil." },
-        { n: "Banshee", d: "Señal sónica de lamento detectada." }
+    
+    // Nombres reales de fenómenos y entidades
+    const REAL_ENTITIES = [
+        { n: "POLTERGEIST", d: "Actividad cinética detectada." },
+        { n: "PAIMON", d: "Entidad de clase real. Alta peligrosidad." },
+        { n: "THE HAT MAN", d: "Fenómeno de sombra residual documentado." },
+        { n: "ZOZO", d: "Señal parásita de baja frecuencia." },
+        { n: "VALAK", d: "Anomalía espectral de nivel 5." },
+        { n: "BANSHEE", d: "Captación de lamento sónico inaudible." }
     ];
 
-    let currentName = "";
+    let currentEntity = null;
+    let audioCtx = null;
 
     function setFilter(type, btn) {
         video.className = 'filter-' + type;
         document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        
-        // Activar ruido visual solo en modo nocturno
-        noise.style.display = (type === 'night') ? 'block' : 'none';
+        playAlert(150, 0.1); // Sonido de clic
+    }
+
+    // Sistema de sonido de alertas (Beeps)
+    function playAlert(freq, dur) {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
     }
 
     async function init() {
         document.getElementById('start-screen').style.display = 'none';
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", focusMode: "continuous" } 
-            });
-            video.srcObject = stream;
-            video.play();
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        video.play();
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
+        pose.onResults(onResults);
 
-            const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-            pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
-            pose.onResults(onResults);
-
-            // Bucle de detección optimizado
-            const sendFrame = async () => {
-                if(video.readyState === 4) await pose.send({ image: video });
-                requestAnimationFrame(sendFrame);
-            };
-            sendFrame();
-            
-            setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-        } catch (err) { alert("Error de cámara: " + err); }
+        const frame = async () => {
+            if(video.readyState === 4) await pose.send({ image: video });
+            requestAnimationFrame(frame);
+        };
+        frame();
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
     }
 
     function onResults(res) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (res.poseLandmarks) {
-            if (!currentName) {
-                const ent = ENTITIES[Math.floor(Math.random()*ENTITIES.length)];
-                currentName = ent.n;
-                addLog(ent);
-                speak("Atención. " + ent.n + " en área.");
+            if (!currentEntity) {
+                currentEntity = REAL_ENTITIES[Math.floor(Math.random()*REAL_ENTITIES.length)];
+                addLog(currentEntity);
+                playAlert(880, 0.2); // Alerta de detección
             }
             drawGhost(res.poseLandmarks);
             updateHUD(true);
         } else {
-            currentName = "";
+            currentEntity = null;
             tag.style.display = 'none';
             updateHUD(false);
         }
     }
 
     function drawGhost(lm) {
-        ctx.strokeStyle = "rgba(0, 255, 65, 0.7)";
+        ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        
         const head = lm[0];
         tag.style.display = 'block';
         tag.style.left = (head.x * canvas.width) + 'px';
         tag.style.top = (head.y * canvas.height - 30) + 'px';
-        tag.innerText = "ENTIDAD: " + currentName;
-
+        tag.innerText = "DETECTED: " + currentEntity.n;
+        
         lm.forEach((p, i) => {
             const x = p.x * canvas.width;
             const y = p.y * canvas.height;
             if (i === 0) ctx.moveTo(x, y);
-            
-            // Efecto de esqueleto digital
-            if (i % 2 === 0) {
-                ctx.lineTo(x + (Math.random()*4-2), y + (Math.random()*4-2));
-            }
-            
-            // Puntos de calor/energía
+            ctx.lineTo(x + (Math.random()*4-2), y + (Math.random()*4-2));
             ctx.fillStyle = "white";
             ctx.fillRect(x-1, y-1, 2, 2);
         });
@@ -182,24 +174,41 @@
 
     function addLog(e) {
         const item = document.createElement('div');
-        item.style.marginBottom = "5px";
-        item.innerHTML = `<span class="log-name">[ALERTA] ${e.n}</span>: ${e.d}`;
+        item.className = 'log-alert';
+        item.innerHTML = `[ALERTA] PRESENCIA DE ${e.n}: ${e.d}`;
         registry.prepend(item);
+        if (registry.children.length > 4) registry.lastChild.remove();
     }
 
     function updateHUD(det) {
-        const emfValue = det ? (4 + Math.random()*16).toFixed(2) : (Math.random()*0.5).toFixed(2);
-        document.getElementById('emf').innerText = emfValue;
-        document.getElementById('threat').innerText = emfValue > 12 ? "¡EXTREMA!" : (det ? "ALTA" : "PASIVO");
-        document.getElementById('threat').style.color = det ? "var(--danger)" : "var(--main)";
+        const emf = det ? (5 + Math.random()*20).toFixed(2) : (Math.random()*0.4).toFixed(2);
+        document.getElementById('emf').innerText = emf;
+        const threat = document.getElementById('threat');
+        threat.innerText = det ? "AMENAZA DETECTADA" : "BÚSQUEDA...";
+        threat.style.color = det ? "var(--danger)" : "var(--main)";
+        if(det && Math.random() > 0.9) playAlert(440, 0.05); // Pulso de sonar
     }
 
-    function speak(t) {
-        const s = new SpeechSynthesisUtterance(t);
-        s.lang = 'es-ES'; s.pitch = 0.5; s.rate = 0.8;
-        window.speechSynthesis.speak(s);
+    function takePhoto() {
+        // Crear un canvas temporal para combinar video y filtros
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = canvas.width;
+        captureCanvas.height = canvas.height;
+        const cCtx = captureCanvas.getContext('2d');
+        
+        // Aplicar el filtro actual al contexto de captura
+        cCtx.filter = getComputedStyle(video).filter;
+        cCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        cCtx.filter = 'none';
+        cCtx.drawImage(canvas, 0, 0); // Dibujar el esqueleto y etiquetas
+        
+        // Descargar la imagen
+        const link = document.createElement('a');
+        link.download = `EVIDENCIA_${new Date().getTime()}.png`;
+        link.href = captureCanvas.toDataURL();
+        link.click();
+        playAlert(1200, 0.1); // Sonido de obturador
     }
 </script>
 </body>
 </html>
-
