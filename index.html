@@ -3,53 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>AI Boxing Corner</title>
+  <title>AI Paranormal Detector</title>
   <style>
-    :root { --neon: #00f2ff; --boxing-red: #ff3c3c; --zen: #00ff88; --warning: #ffcc00; }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Oswald', sans-serif; }
-    body { background: #000; color: white; overflow: hidden; }
+    :root { --ghost-green: #00ff88; --ghost-cyan: #00f2ff; --alert: #ff3c3c; --bg: #050a05; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
+    body { background: var(--bg); color: var(--ghost-green); overflow: hidden; }
 
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.4; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.6) sepia(1) hue-rotate(100deg) saturate(2); opacity: 0.3; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; }
 
-    /* HUD BOXEO */
-    #hud { position: absolute; top: 20px; width: 100%; padding: 0 30px; z-index: 10; display: none; }
-    .stat-card { background: rgba(20,20,20,0.85); padding: 15px; border-radius: 10px; border-top: 4px solid var(--boxing-red); min-width: 120px; text-align: center; }
-    .val { font-size: 35px; font-weight: 900; display: block; }
-    .lab { font-size: 12px; color: var(--boxing-red); text-transform: uppercase; }
+    /* HUD PARANORMAL */
+    #hud { position: absolute; top: 20px; width: 100%; padding: 0 20px; z-index: 10; display: none; }
+    .stat-card { background: rgba(0, 30, 0, 0.7); padding: 10px; border: 1px solid var(--ghost-green); border-radius: 4px; min-width: 100px; }
+    .val { font-size: 20px; font-weight: bold; display: block; color: var(--ghost-cyan); }
+    .lab { font-size: 10px; text-transform: uppercase; color: var(--ghost-green); }
 
-    /* INSTRUCCIONES CENTRALES */
-    #instruction-overlay {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      text-align: center; z-index: 50; pointer-events: none;
+    /* RADAR */
+    #radar {
+      position: absolute; bottom: 30px; left: 30px; width: 120px; height: 120px;
+      border: 2px solid var(--ghost-green); border-radius: 50%; z-index: 20;
+      background: repeating-radial-gradient(circle, transparent 0, transparent 20px, rgba(0,255,136,0.1) 21px);
     }
-    #big-msg { font-size: 4rem; font-weight: 900; text-shadow: 0 0 20px var(--boxing-red); color: white; }
+    #radar-sweep {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: conic-gradient(from 0deg, rgba(0,255,136,0.5) 0deg, transparent 90deg);
+      animation: sweep 3s linear infinite;
+    }
 
-    .btn-start { background: var(--boxing-red); color: white; padding: 20px 60px; border-radius: 5px; font-size: 2rem; border: none; cursor: pointer; }
-    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    @keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .btn-start { background: transparent; color: var(--ghost-green); padding: 15px 40px; border: 2px solid var(--ghost-green); font-size: 1.5rem; cursor: pointer; transition: 0.3s; }
+    .btn-start:hover { background: var(--ghost-green); color: black; }
+    
+    .overlay { position: fixed; inset: 0; background: black; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    #big-msg { position: absolute; top: 70%; left: 50%; transform: translateX(-50%); z-index: 50; font-size: 1.5rem; text-shadow: 0 0 10px var(--ghost-green); }
     
     .hidden { display: none !important; }
+    .glitch { animation: glitch 0.2s infinite; }
+    @keyframes glitch { 0% { opacity: 1; } 50% { opacity: 0.7; transform: translateX(2px); } 100% { opacity: 1; } }
   </style>
 </head>
 <body>
 
   <div id="menu" class="overlay">
-    <h1 style="font-size: 3rem; margin-bottom: 20px;">AI BOXING SENSEI</h1>
-    <p style="margin-bottom: 40px; color: #888;">Circuito: Boxeo → Sentadillas → Abdominales</p>
-    <button class="btn-start" onclick="startCircuit()">EMPEZAR ROUND</button>
+    <h1 style="font-size: 2rem; margin-bottom: 10px; letter-spacing: 5px;">SPECTRAL AI v1.0</h1>
+    <p style="margin-bottom: 30px; color: #008844;">ADVERTENCIA: Detección de biometría espectral activa</p>
+    <button class="btn-start" onclick="startScanner()">INICIAR ESCANEO</button>
   </div>
 
   <div id="hud">
-    <div style="display: flex; justify-content: space-between;">
-      <div class="stat-card"><span class="lab">Fase Actual</span><span id="ui-phase" class="val" style="font-size: 20px;">BOXEO</span></div>
-      <div class="stat-card" style="border-color: var(--neon);"><span class="lab">Conteo</span><span id="ui-reps" class="val">0</span></div>
-      <div class="stat-card" style="border-color: var(--warning);"><span class="lab">Tiempo</span><span id="ui-timer" class="val">45</span></div>
+    <div style="display: flex; gap: 10px;">
+      <div class="stat-card"><span class="lab">EMF Level</span><span id="ui-emf" class="val">0.1 μT</span></div>
+      <div class="stat-card"><span class="lab">Entidades</span><span id="ui-entities" class="val">0</span></div>
+      <div class="stat-card"><span class="lab">Temp</span><span id="ui-temp" class="val">18.4°C</span></div>
     </div>
   </div>
 
-  <div id="instruction-overlay">
-    <div id="big-msg"></div>
-  </div>
+  <div id="radar"><div id="radar-sweep"></div></div>
+  <div id="big-msg"></div>
 
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
@@ -58,12 +69,12 @@
 
   <script>
     const state = {
-        phase: 'boxing', // boxing, squats, abs
         active: false,
-        reps: 0,
-        timer: 45,
+        entities: 0,
+        emf: 0.1,
+        temp: 18.4,
         lastSpeak: 0,
-        stage: 'guard'
+        anomalies: []
     };
 
     const dom = {
@@ -74,131 +85,96 @@
     };
 
     function speak(txt) {
-        if (Date.now() - state.lastSpeak < 2500) return;
+        if (Date.now() - state.lastSpeak < 4000) return;
         state.lastSpeak = Date.now();
         const s = new SpeechSynthesisUtterance(txt);
         s.lang = 'es-ES';
+        s.pitch = 0.5; // Voz más tétrica
+        s.rate = 0.8;
         window.speechSynthesis.speak(s);
-        dom.msg.innerText = txt.toUpperCase();
-        setTimeout(() => dom.msg.innerText = "", 2000);
+        dom.msg.innerText = ">> " + txt.toUpperCase();
+        setTimeout(() => dom.msg.innerText = "", 3000);
     }
 
-    async function startCircuit() {
+    async function startScanner() {
         document.getElementById('menu').classList.add('hidden');
         document.getElementById('hud').style.display = 'block';
         
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        dom.video.srcObject = stream;
-        await dom.video.play();
-        dom.canvas.width = dom.video.videoWidth;
-        dom.canvas.height = dom.video.videoHeight;
-
-        initAI();
-        runTimer();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
+            dom.video.srcObject = stream;
+            await dom.video.play();
+            dom.canvas.width = dom.video.videoWidth;
+            dom.canvas.height = dom.video.videoHeight;
+            state.active = true;
+            initAI();
+            simulateEnvironment();
+        } catch (e) { alert("Error al acceder a la cámara"); }
     }
 
-    function runTimer() {
-        state.active = true;
-        speak("¡Ronda uno! Boxeo de sombra. ¡Mantén la guardia arriba!");
-        
-        const clock = setInterval(() => {
-            state.timer--;
-            document.getElementById('ui-timer').innerText = state.timer;
-
-            if (state.timer === 0) {
-                if (state.phase === 'boxing') {
-                    state.phase = 'squats';
-                    state.timer = 30;
-                    state.reps = 0;
-                    speak("¡Tiempo! Ahora 30 segundos de sentadillas. ¡Baja esa cadera!");
-                } else if (state.phase === 'squats') {
-                    state.phase = 'abs';
-                    state.timer = 30;
-                    speak("¡Al suelo! Abdominales libres. ¡Sigue mi voz!");
-                } else {
-                    clearInterval(clock);
-                    finish();
-                }
+    function simulateEnvironment() {
+        setInterval(() => {
+            if (!state.active) return;
+            // Variaciones aleatorias de EMF y Temperatura
+            state.emf = (Math.random() * 5).toFixed(1);
+            state.temp = (15 + Math.random() * 5).toFixed(1);
+            document.getElementById('ui-emf').innerText = `${state.emf} μT`;
+            document.getElementById('ui-temp').innerText = `${state.temp} °C`;
+            
+            if (state.emf > 4) {
+                document.body.classList.add('glitch');
+                setTimeout(() => document.body.classList.remove('glitch'), 500);
             }
-            document.getElementById('ui-phase').innerText = state.phase.toUpperCase();
-        }, 1000);
+        }, 2000);
     }
 
-    function finish() {
-        state.active = false;
-        speak("Entrenamiento completado. Eres un campeón.");
-        location.reload();
-    }
-
-    function analyzePose(lm) {
+    function drawGhostVisuals(lm) {
         const ctx = dom.ctx;
         
-        // --- LÓGICA DE BOXEO ---
-        if (state.phase === 'boxing') {
-            const leftElbow = getAngle(lm[11], lm[13], lm[15]);
-            const rightElbow = getAngle(lm[12], lm[14], lm[16]);
-            const guardUp = (lm[15].y < lm[0].y) && (lm[16].y < lm[0].y);
-
-            if (!guardUp && Math.random() < 0.01) speak("¡Sube las manos! Protege tu cara.");
-
-            // Detección de golpe (Extensión explosiva)
-            if (state.stage === 'guard' && (leftElbow > 160 || rightElbow > 160)) {
-                state.reps++;
-                state.stage = 'punch';
-                document.getElementById('ui-reps').innerText = state.reps;
-            } else if (leftElbow < 90 && rightElbow < 90) {
-                state.stage = 'guard';
+        // Dibujar esqueleto espectral
+        ctx.strokeStyle = "rgba(0, 255, 136, 0.5)";
+        ctx.lineWidth = 2;
+        
+        // Efecto de partículas alrededor de la "entidad"
+        lm.forEach((point, i) => {
+            if (i > 10 && i < 20) { // Solo articulaciones principales
+                ctx.beginPath();
+                ctx.arc(point.x * dom.canvas.width, point.y * dom.canvas.height, 5, 0, Math.PI*2);
+                ctx.fillStyle = "rgba(0, 242, 255, 0.8)";
+                ctx.fill();
+                
+                // Círculos de interferencia
+                ctx.beginPath();
+                ctx.arc(point.x * dom.canvas.width, point.y * dom.canvas.height, Math.random() * 20, 0, Math.PI*2);
+                ctx.stroke();
             }
-        }
-
-        // --- LÓGICA DE SENTADILLAS ---
-        if (state.phase === 'squats') {
-            const knee = getAngle(lm[24], lm[26], lm[28]);
-            if (state.stage === 'up' && knee < 100) state.stage = 'down';
-            if (state.stage === 'down' && knee > 150) {
-                state.reps++; state.stage = 'up';
-                document.getElementById('ui-reps').innerText = state.reps;
-            }
-        }
-    }
-
-    function drawBoxingVisuals(lm) {
-        const ctx = dom.ctx;
-        // Dibujar "Guantes"
-        [[15, 'red'], [16, 'blue']].forEach(([idx, color]) => {
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(lm[idx].x * dom.canvas.width, lm[idx].y * dom.canvas.height, 35, 0, Math.PI * 2);
-            ctx.fill();
-            // Brillo
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 3;
-            ctx.stroke();
         });
-    }
 
-    function getAngle(p1, p2, p3) {
-        const rad = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
-        let ang = Math.abs(rad * 180 / Math.PI);
-        if (ang > 180) ang = 360 - ang;
-        return ang;
+        // Si detecta una cara (punto 0), poner marcador de entidad
+        if (lm[0].visibility > 0.5) {
+            ctx.fillStyle = "rgba(255, 60, 60, 0.3)";
+            ctx.font = "15px Courier New";
+            ctx.fillText("ENTIDAD_DETECTADA", lm[0].x * dom.canvas.width - 50, lm[0].y * dom.canvas.height - 40);
+        }
     }
 
     function initAI() {
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
+        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
         
         pose.onResults(results => {
-            if (!results.poseLandmarks) return;
-            const lm = results.poseLandmarks;
-            dom.ctx.save();
             dom.ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
-            dom.ctx.translate(dom.canvas.width, 0); dom.ctx.scale(-1, 1);
             
-            analyzePose(lm);
-            if (state.phase === 'boxing') drawBoxingVisuals(lm);
-            
-            dom.ctx.restore();
+            if (results.poseLandmarks) {
+                state.entities = 1;
+                drawGhostVisuals(results.poseLandmarks);
+                if (Math.random() < 0.01) speak("Presencia humana detectada en el plano visual");
+            } else {
+                state.entities = 0;
+            }
+            document.getElementById('ui-entities').innerText = state.entities;
         });
 
         const frame = async () => {
