@@ -2,127 +2,163 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lector OCR Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner & Translator Pro</title>
     <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <style>
-        :root { --primary: #6200ee; --highlight: #ffff00; }
-        body { font-family: sans-serif; margin: 0; background: #f5f5f5; padding-bottom: 120px; }
+        :root { --accent: #007AFF; --bg: #1a1a1a; --text: #ffffff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--text); overflow-x: hidden; }
         
-        /* Contenedor de video y resultados */
-        #camera-container { width: 100%; height: 300px; background: #000; position: relative; overflow: hidden; }
+        /* Contenedor de Cámara */
+        #viewport { position: relative; width: 100%; height: 45vh; background: #000; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        #text-container { padding: 20px; line-height: 1.6; font-size: 1.1em; background: white; min-height: 200px; }
-        
-        .word { display: inline-block; margin-right: 4px; border-radius: 3px; }
-        .active { background-color: var(--highlight); }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 2px solid var(--accent); box-sizing: border-box; pointer-events: none; opacity: 0.5; }
 
-        /* Menú y Controles */
-        .bottom-menu { position: fixed; bottom: 0; left: 0; right: 0; background: #222; display: flex; justify-content: space-around; padding: 15px; z-index: 100; }
-        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        
-        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }
-        
+        /* Contenedor de Texto */
+        #output-area { padding: 20px; background: #222; min-height: 30vh; border-radius: 20px 20px 0 0; margin-top: -20px; position: relative; z-index: 10; }
+        .word { display: inline-block; margin-right: 4px; padding: 2px; border-radius: 4px; color: #ccc; font-size: 1.2rem; }
+        .active { background: #FFD700; color: #000; font-weight: bold; }
+
+        /* Panel de Control de Idioma */
+        .language-bar { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; background: #333; padding: 10px; border-radius: 12px; }
+        .lang-btn { background: transparent; border: 1px solid #555; color: white; padding: 8px 15px; border-radius: 8px; font-size: 0.9rem; }
+        .lang-btn.selected { background: var(--accent); border-color: var(--accent); }
+
+        /* Menú Inferior */
+        .controls { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: space-around; padding: 20px 0; padding-bottom: env(safe-area-inset-bottom); }
+        .btn-main { background: var(--accent); border: none; color: white; width: 60px; height: 60px; border-radius: 50%; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,122,255,0.4); }
+        .btn-secondary { background: #333; border: none; color: white; padding: 10px 20px; border-radius: 10px; }
+
+        #status { font-size: 0.8rem; text-align: center; color: var(--accent); margin-bottom: 10px; height: 20px; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="camera-container">
+    <div id="viewport">
         <video id="video" autoplay playsinline></video>
-        <div id="loading">Analizando texto...</div>
+        <div id="overlay"></div>
     </div>
 
-    <div id="text-container">
-        Apunta con la cámara y presiona "📸 Capturar" para extraer el texto.
+    <div id="output-area">
+        <div id="status">Listo para escanear</div>
+        
+        <div class="language-bar">
+            <button class="lang-btn selected" id="btn-en" onclick="setLang('en')">Inglés (Lectura)</button>
+            <button class="lang-btn" id="btn-es" onclick="setLang('es')">Español (Lectura)</button>
+        </div>
+
+        <div id="text-container">
+            El texto reconocido aparecerá aquí...
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-secondary" onclick="translateText()">Traducción</button>
+        <button class="btn-main" onclick="captureAndProcess()">📸</button>
+        <button class="btn-secondary" id="play-btn" onclick="toggleSpeech()">▶️ Leer</button>
     </div>
 
     <canvas id="canvas"></canvas>
 
-    <div class="bottom-menu">
-        <button onclick="captureImage()">📸 Capturar</button>
-        <button onclick="speak()">▶️ Leer</button>
-        <button onclick="translateText()">🌍 Traducir</button>
-        <button onclick="stop()">⏹️</button>
-    </div>
-
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
-        const loading = document.getElementById('loading');
+        const status = document.getElementById('status');
         const container = document.getElementById('text-container');
+        let currentLang = 'en'; // 'en' o 'es'
         let synth = window.speechSynthesis;
+        let isSpeaking = false;
 
-        // Iniciar Cámara
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } // Usa la cámara trasera
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                alert("No se pudo acceder a la cámara: " + err);
-            }
+        // Iniciar cámara trasera
+        async function initCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: 1280, height: 720 } 
+            });
+            video.srcObject = stream;
         }
 
-        // Capturar foto y extraer texto (OCR)
-        async function captureImage() {
-            loading.style.display = 'block';
+        function setLang(lang) {
+            currentLang = lang;
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('selected'));
+            document.getElementById(`btn-${lang}`).classList.add('selected');
+            status.innerText = `Idioma de lectura configurado: ${lang === 'en' ? 'Inglés' : 'Español'}`;
+        }
+
+        async function captureAndProcess() {
+            status.innerText = "Capturando imagen...";
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Tesseract procesa la imagen
-            Tesseract.recognize(
-                canvas.toDataURL('image/png'),
-                'eng', // Idioma a buscar en la imagen
-                { logger: m => console.log(m) }
-            ).then(({ data: { text } }) => {
-                loading.style.display = 'none';
-                renderText(text);
-            });
+            status.innerText = "Reconociendo texto (OCR)...";
+            const { data: { text } } = await Tesseract.recognize(canvas.toDataURL(), 'eng+spa');
+            
+            renderText(text);
+            status.innerText = "Texto listo";
         }
 
         function renderText(text) {
             container.innerHTML = text.split(/\s+/).map(word => `<span class="word">${word}</span>`).join(' ');
         }
 
-        function speak() {
-            if (synth.speaking) return;
+        async function translateText() {
+            const text = container.innerText;
+            status.innerText = "Traduciendo...";
+            // Si el texto está en inglés lo pasa a español y viceversa
+            const target = currentLang === 'en' ? 'es' : 'en'; 
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURI(text)}`;
+            
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                const translated = data[0].map(item => item[0]).join('');
+                renderText(translated);
+                setLang(target); // Cambia el idioma de lectura al idioma traducido
+                status.innerText = "Traducido con éxito";
+            } catch (e) { status.innerText = "Error en traducción"; }
+        }
+
+        function toggleSpeech() {
+            if (synth.speaking) {
+                synth.cancel();
+                document.getElementById('play-btn').innerText = "▶️ Leer";
+                return;
+            }
+
             const utterance = new SpeechSynthesisUtterance(container.innerText);
-            // Si el texto es inglés, usa 'en-US', si es español tras traducir, usa 'es-ES'
-            utterance.lang = container.innerText.includes(" ") ? 'en-US' : 'es-ES'; 
+            utterance.lang = currentLang === 'en' ? 'en-US' : 'es-ES';
+            utterance.rate = 0.9;
 
             utterance.onboundary = (event) => {
                 if (event.name === 'word') {
-                    const words = container.innerText.substring(0, event.charIndex).trim().split(/\s+/);
-                    highlightWord(words.length - 1);
+                    // Calculamos el índice de la palabra basándonos en el texto hasta ese punto
+                    const wordsSoFar = container.innerText.substring(0, event.charIndex).trim().split(/\s+/);
+                    highlightWord(wordsSoFar.length - 1);
                 }
             };
+
+            utterance.onend = () => {
+                document.getElementById('play-btn').innerText = "▶️ Leer";
+                removeHighlights();
+            };
+
+            document.getElementById('play-btn').innerText = "⏹️ Parar";
             synth.speak(utterance);
         }
 
         function highlightWord(index) {
             const spans = document.querySelectorAll('.word');
-            spans.forEach(s => s.classList.remove('active'));
+            removeHighlights();
             if (spans[index]) spans[index].classList.add('active');
         }
 
-        async function translateText() {
-            const text = container.innerText;
-            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURI(text)}`;
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                const translated = data[0].map(item => item[0]).join('');
-                renderText(translated);
-            } catch (e) { alert("Error al traducir"); }
+        function removeHighlights() {
+            document.querySelectorAll('.word').forEach(s => s.classList.remove('active'));
         }
 
-        function stop() { synth.cancel(); }
-
-        startCamera();
+        initCamera();
     </script>
 </body>
 </html>
