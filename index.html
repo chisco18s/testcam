@@ -3,36 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro — Single Player</title>
+  <title>Kinect Pro Ultra — Fitness & FX</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+    body { background: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+    
     #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
     
-    .ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 10; }
+    /* UI Principal */
+    .ui { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; flex-wrap: wrap; padding: 0 10px; }
     button {
-      background: rgba(255,255,255,0.15); backdrop-filter: blur(12px);
+      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 15px 25px; border-radius: 50px; cursor: pointer; font-weight: bold;
+      padding: 12px 18px; border-radius: 50px; cursor: pointer; font-weight: bold;
+      transition: all 0.3s; font-size: 14px;
     }
-    button:active { background: #00f2ff; color: #000; }
+    button:active { background: #00f2ff; color: #000; transform: scale(0.95); }
+    .btn-active { background: #ff4444 !important; }
+
+    /* Indicadores de Estado */
     .status {
       position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7); padding: 8px 20px; border-radius: 20px;
+      background: rgba(0,0,0,0.8); padding: 10px 25px; border-radius: 30px;
       color: #00f2ff; font-weight: bold; z-index: 10; border: 1px solid #00f2ff;
+      letter-spacing: 1px; box-shadow: 0 0 15px rgba(0,242,255,0.3);
     }
+
+    #stats {
+      position: absolute; top: 80px; left: 20px; z-index: 10;
+      background: rgba(0,0,0,0.6); padding: 15px; border-radius: 15px;
+      border-left: 5px solid #00f2ff;
+    }
+    .stat-val { font-size: 24px; color: #fff; display: block; }
+    .stat-label { font-size: 12px; color: #00f2ff; text-transform: uppercase; }
+
+    /* Botón Virtual (Touchless) */
+    #v-button {
+      position: absolute; top: 50%; right: 30px; transform: translateY(-50%);
+      width: 100px; height: 100px; border: 3px solid rgba(255,255,255,0.2);
+      border-radius: 50%; z-index: 8; display: flex; align-items: center; 
+      justify-content: center; text-align: center; font-size: 12px;
+    }
+    #v-fill {
+      position: absolute; bottom: 0; width: 100%; height: 0%;
+      background: rgba(0,242,255,0.5); border-radius: 50%; transition: height 0.1s;
+    }
+
+    .rec-dot {
+      position: absolute; top: 25px; right: 25px; width: 15px; height: 15px;
+      background: red; border-radius: 50%; z-index: 10; display: none;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
   </style>
 </head>
 <body>
 
-  <div class="status" id="status">INICIALIZANDO KINECT...</div>
+  <div class="status" id="status">INICIALIZANDO...</div>
+  <div class="rec-dot" id="rec-dot"></div>
+
+  <div id="stats">
+    <span class="stat-label">Sentadillas</span>
+    <span class="stat-val" id="count-val">0</span>
+    <span id="posture-msg" style="color: #ff4444; font-size: 10px; font-weight: bold;"></span>
+  </div>
+
+  <div id="v-button">
+    <div id="v-fill"></div>
+    <span style="position:relative;">MANO AQUÍ<br>REINICIAR</span>
+  </div>
+
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
 
   <div class="ui">
-    <button id="btn-camera">🔄 Girar Cámara</button>
-    <button id="btn-ghost">👻 Modo Ghost</button>
+    <button id="btn-camera">🔄 Cámara</button>
+    <button id="btn-ghost">👻 Ghost</button>
+    <button id="btn-color">🌈 Color</button>
+    <button id="btn-rec">🔴 Grabar</button>
+    <button id="btn-snap">📸 Foto</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
@@ -43,16 +93,38 @@
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
     
+    // Variables de Estado
     let poseDetector;
     let isGhost = false;
     let currentFacing = 'user';
+    let skeletonColor = "#00f2ff";
+    let count = 0;
+    let stage = "up";
+    let vFillHeight = 0;
+    
+    // Grabación
+    let mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
 
-    // Conexiones completas incluyendo rostro
+    // Audio Context para el "Beep" de fitness
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 440) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.1;
+      osc.start();
+      setTimeout(() => osc.stop(), 100);
+    }
+
     const CONNECTIONS = [
-      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], // Rostro/Cabeza
-      [11,12], [11,13], [13,15], [12,14], [14,16], // Brazos
-      [11,23], [12,24], [23,24], // Torso
-      [23,25], [25,27], [24,26], [26,28]  // Piernas
+      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], 
+      [11,12], [11,13], [13,15], [12,14], [14,16], 
+      [11,23], [12,24], [23,24], 
+      [23,25], [25,27], [24,26], [26,28]
     ];
 
     async function init() {
@@ -61,17 +133,15 @@
       });
 
       poseDetector.setOptions({
-        modelComplexity: 0, // 0 es el modo más rápido, ideal para Honor 400 Lite
+        modelComplexity: 1,
         smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
       });
 
       poseDetector.onResults(onResults);
-      
       await setupCamera();
       
-      // Ciclo de detección optimizado
       const frameLoop = async () => {
         if (video.readyState >= 2) {
           await poseDetector.send({ image: video });
@@ -82,62 +152,102 @@
     }
 
     async function setupCamera() {
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: currentFacing, width: { ideal: 640 }, height: { ideal: 480 } }
-        });
-        
-        video.srcObject = stream;
-        // Inversión visual de la cámara
-        video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-        
-        return new Promise(res => {
-          video.onloadedmetadata = () => {
-            video.play();
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            statusEl.innerText = "SISTEMA ACTIVO";
-            res();
-          };
-        });
-      } catch (e) {
-        statusEl.innerText = "ERROR DE CÁMARA";
-      }
+      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacing, width: 640, height: 480 }
+      });
+      video.srcObject = stream;
+      return new Promise(res => {
+        video.onloadedmetadata = () => {
+          video.play();
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          statusEl.innerText = "SISTEMA ACTIVO";
+          res();
+        };
+      });
     }
 
     function onResults(results) {
+      // EFECTO NEÓN (Rastro): No limpiamos del todo el canvas
       ctx.save();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (isGhost) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // Rastro ghost
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
 
-      // Inversión del esqueleto para que coincida con la cámara frontal
       if (currentFacing === 'user') {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
 
-      if (isGhost) {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
       if (results.poseLandmarks) {
+        processFitness(results.poseLandmarks);
+        processTouchless(results.poseLandmarks);
         drawSkeleton(results.poseLandmarks);
       }
       ctx.restore();
     }
 
-    function drawSkeleton(landmarks) {
-      ctx.strokeStyle = "#00f2ff";
-      ctx.lineWidth = 5;
-      ctx.lineCap = "round";
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = "#00f2ff";
+    function processFitness(landmarks) {
+      // Lógica de Sentadilla (Punto 24 Cadera, 26 Rodilla, 28 Tobillo)
+      const hip = landmarks[24];
+      const knee = landmarks[26];
+      
+      if (hip.visibility > 0.5 && knee.visibility > 0.5) {
+        // Si la cadera baja de cierto nivel respecto a la rodilla
+        if (hip.y > knee.y - 0.05) {
+          stage = "down";
+        }
+        if (hip.y < knee.y - 0.15 && stage === "down") {
+          stage = "up";
+          count++;
+          document.getElementById('count-val').innerText = count;
+          playBeep(600);
+        }
+      }
 
-      // Huesos
+      // CORRECCIÓN DE POSTURA: Hombros alineados
+      const shoulderL = landmarks[11];
+      const shoulderR = landmarks[12];
+      const diff = Math.abs(shoulderL.y - shoulderR.y);
+      if (diff > 0.08) {
+        document.getElementById('posture-msg').innerText = "⚠️ NIVELA TUS HOMBROS";
+        skeletonColor = "#ff4444"; // Color de alerta
+      } else {
+        document.getElementById('posture-msg').innerText = "";
+      }
+    }
+
+    function processTouchless(landmarks) {
+      // Mano derecha (16) cerca del botón virtual (zona derecha superior)
+      const hand = landmarks[16];
+      const vFillEl = document.getElementById('v-fill');
+      
+      // Coordenadas normalizadas del botón (aprox x > 0.8, y entre 0.4 y 0.6)
+      if (hand.x < 0.2 && hand.y > 0.4 && hand.y < 0.6) { // x < 0.2 porque está espejado
+        vFillHeight += 5;
+        if (vFillHeight >= 100) {
+          count = 0;
+          document.getElementById('count-val').innerText = count;
+          vFillHeight = 0;
+          playBeep(200);
+        }
+      } else {
+        vFillHeight = Math.max(0, vFillHeight - 10);
+      }
+      vFillEl.style.height = vFillHeight + "%";
+    }
+
+    function drawSkeleton(landmarks) {
+      ctx.strokeStyle = skeletonColor;
+      ctx.lineWidth = 6;
+      ctx.lineCap = "round";
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = skeletonColor;
+
       CONNECTIONS.forEach(([a, b]) => {
         const p1 = landmarks[a];
         const p2 = landmarks[b];
@@ -148,29 +258,74 @@
           ctx.stroke();
         }
       });
-
-      // Puntos
-      ctx.shadowBlur = 0;
-      landmarks.forEach((p, i) => {
-        if (p.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.arc(p.x * canvas.width, p.y * canvas.height, i < 11 ? 3 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = i < 11 ? "white" : "#00f2ff";
-          ctx.fill();
-        }
-      });
     }
+
+    // --- EVENTOS DE BOTONES ---
 
     document.getElementById('btn-camera').onclick = async () => {
       currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
-      statusEl.innerText = "CAMBIANDO CÁMARA...";
       await setupCamera();
     };
 
     document.getElementById('btn-ghost').onclick = function() {
       isGhost = !isGhost;
-      video.style.opacity = isGhost ? "0" : "1";
+      video.style.opacity = isGhost ? "0.2" : "1";
+      this.classList.toggle('btn-active');
     };
+
+    document.getElementById('btn-color').onclick = () => {
+      const colors = ["#00f2ff", "#ff00ff", "#00ff00", "#ffff00", "#ff4444"];
+      skeletonColor = colors[Math.floor(Math.random() * colors.length)];
+    };
+
+    document.getElementById('btn-snap').onclick = () => {
+      const link = document.createElement('a');
+      link.download = 'kinect-capture.png';
+      // Dibujamos el video en el canvas para la foto
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tCtx = tempCanvas.getContext('2d');
+      tCtx.drawImage(video, 0, 0);
+      tCtx.drawImage(canvas, 0, 0);
+      link.href = tempCanvas.toDataURL();
+      link.click();
+    };
+
+    document.getElementById('btn-rec').onclick = function() {
+      if (!isRecording) {
+        startRecording();
+        this.innerText = "⏹️ Parar";
+        this.classList.add('btn-active');
+        document.getElementById('rec-dot').style.display = "block";
+      } else {
+        stopRecording();
+        this.innerText = "🔴 Grabar";
+        this.classList.remove('btn-active');
+        document.getElementById('rec-dot').style.display = "none";
+      }
+      isRecording = !isRecording;
+    };
+
+    function startRecording() {
+      recordedChunks = [];
+      const stream = canvas.captureStream(30);
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'kinect-video.webm';
+        a.click();
+      };
+      mediaRecorder.start();
+    }
+
+    function stopRecording() {
+      mediaRecorder.stop();
+    }
 
     init();
   </script>
