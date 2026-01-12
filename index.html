@@ -2,66 +2,84 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Spectral AI - Registry Edition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Spectral AI Mobile</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <style>
     :root { --main: #00ff41; --danger: #ff3c3c; --ghost: #00f2ff; }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-    body { background: #000; color: var(--main); overflow: hidden; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; -webkit-tap-highlight-color: transparent; }
+    body { background: #000; color: var(--main); overflow: hidden; position: fixed; width: 100%; height: 100%; }
 
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.4) contrast(1.5) grayscale(1); opacity: 0.35; }
+    /* Cámara optimizada para móvil */
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.4) contrast(1.4) grayscale(1); opacity: 0.4; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; }
 
-    /* HUD Superior */
-    #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 15px; background: rgba(0,20,0,0.6); border-bottom: 1px solid var(--main); }
-    .data-box { text-align: center; }
-    .value { font-size: 1.2rem; font-weight: bold; color: white; text-shadow: 0 0 5px var(--main); }
-
-    /* Registro de Actividad (Historial de Nombres) */
-    #registry-console { 
-        position: absolute; bottom: 120px; left: 20px; width: 280px; height: 120px; 
-        background: rgba(0, 30, 0, 0.4); border-left: 2px solid var(--ghost);
-        padding: 10px; overflow-y: hidden; font-size: 12px; z-index: 25;
-        display: flex; flex-direction: column-reverse;
+    /* HUD Superior adaptado a "Notch" de celulares modernos */
+    #hud-top { 
+        position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; 
+        z-index: 20; padding: env(safe-area-inset-top) 10px 10px 10px; 
+        background: rgba(0,20,0,0.7); border-bottom: 1px solid var(--main); 
     }
-    .log-entry { margin-bottom: 4px; color: var(--ghost); animation: fadeIn 0.5s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    .data-box { text-align: center; flex: 1; }
+    .value { font-size: 1rem; font-weight: bold; color: white; }
 
-    /* Otros Elementos */
-    #proximity-bar { position: absolute; right: 15px; top: 25%; width: 12px; height: 50%; border: 1px solid #333; z-index: 20; border-radius: 5px; overflow: hidden;}
-    #proximity-fill { width: 100%; height: 0%; background: linear-gradient(to top, var(--main), var(--danger)); transition: height 0.2s; }
+    /* Registro de Actividad para pulgares */
+    #registry-console { 
+        position: absolute; bottom: 110px; left: 10px; right: 10px; height: 100px; 
+        background: rgba(0, 30, 0, 0.4); border-left: 3px solid var(--ghost);
+        padding: 8px; overflow: hidden; font-size: 11px; z-index: 25;
+        display: flex; flex-direction: column-reverse; pointer-events: none;
+    }
+    .log-entry { margin-bottom: 3px; color: var(--ghost); border-bottom: 1px solid rgba(0,255,65,0.1); }
+
+    /* Barra de Proximidad Lateral */
+    #proximity-bar { position: absolute; right: 10px; top: 20%; width: 10px; height: 40%; border: 1px solid #333; z-index: 20; border-radius: 10px; background: rgba(0,0,0,0.5); }
+    #proximity-fill { width: 100%; height: 0%; background: linear-gradient(to top, var(--main), var(--danger)); transition: height 0.3s; }
     
-    .entity-tag { position: absolute; color: white; font-weight: bold; padding: 4px 10px; border: 2px solid var(--danger); background: rgba(255,0,0,0.2); z-index: 40; pointer-events: none; backdrop-filter: blur(2px); }
+    /* Etiqueta flotante */
+    .entity-tag { position: absolute; color: white; font-weight: bold; padding: 3px 8px; border: 2px solid var(--danger); background: rgba(255,0,0,0.3); z-index: 40; font-size: 12px; pointer-events: none; white-space: nowrap; text-shadow: 1px 1px black; }
     
-    .bottom-bar { position: fixed; bottom: 0; width: 100%; padding: 20px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; align-items: center; z-index: 30; }
-    #radar { width: 60px; height: 60px; border: 1px solid var(--main); border-radius: 50%; position: relative; }
+    /* Barra Inferior */
+    .bottom-bar { 
+        position: fixed; bottom: 0; width: 100%; 
+        padding: 10px 20px calc(env(safe-area-inset-bottom) + 10px) 20px; 
+        background: rgba(0,0,0,0.9); display: flex; justify-content: space-between; align-items: center; z-index: 30; 
+    }
+    #radar { width: 55px; height: 55px; border: 1px solid var(--main); border-radius: 50%; position: relative; }
     #sweep { width: 100%; height: 100%; background: conic-gradient(from 0deg, rgba(0,255,65,0.4) 0deg, transparent 90deg); animation: rotate 2s linear infinite; border-radius: 50%; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Botón de inicio para cumplir con políticas de audio de Android/iOS */
+    #start-overlay { position: fixed; inset: 0; background: black; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .btn-power { background: transparent; border: 2px solid var(--main); color: var(--main); padding: 20px 40px; font-size: 1.2rem; border-radius: 50px; text-transform: uppercase; letter-spacing: 2px; }
   </style>
 </head>
 <body>
+
+  <div id="start-overlay">
+    <h1 style="margin-bottom: 20px; color: var(--main)">SPECTRAL AI</h1>
+    <button class="btn-power" onclick="initApp()">Iniciar Escáner</button>
+  </div>
 
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
 
   <div id="hud-top">
-    <div class="data-box"><div>EMF</div><div class="value" id="val-emf">0.00</div></div>
-    <div class="data-box"><div>ENTIDADES</div><div class="value" id="val-entities">0</div></div>
-    <div class="data-box"><div>REC</div><div class="value" style="color:red">● LIVE</div></div>
+    <div class="data-box"><div style="font-size: 9px">EMF μT</div><div class="value" id="val-emf">0.00</div></div>
+    <div class="data-box"><div style="font-size: 9px">ENTIDADES</div><div class="value" id="val-entities">0</div></div>
+    <div class="data-box"><div style="font-size: 9px">BATTERY</div><div class="value" id="val-batt">98%</div></div>
   </div>
 
   <div id="proximity-bar"><div id="proximity-fill"></div></div>
-  
   <div id="registry-console"></div>
-  
   <div id="entity-label" class="entity-tag" style="display:none">ANALIZANDO...</div>
 
   <div class="bottom-bar">
     <div id="radar"><div id="sweep"></div></div>
-    <div style="text-align: right; color: var(--main); font-size: 12px;">
-        SISTEMA DE REGISTRO ESPECTRAL<br>
-        <span id="timer" style="font-size: 18px; color: white;">00:00:00</span>
+    <div style="text-align: right; color: var(--main); font-size: 10px;">
+        MOBILE SPECTRAL UNIT<br>
+        <span id="timer" style="font-size: 16px; color: white;">00:00:00</span>
     </div>
   </div>
 
@@ -73,94 +91,88 @@
     const entityLabel = document.getElementById('entity-label');
     const proxFill = document.getElementById('proximity-fill');
 
-    const ENTITY_NAMES = ["Sombra tipo IV", "Remanente Psíquico", "Poltergeist", "Ente Clase A", "Vigía Espectral", "Infante de Bruma", "Aparición"];
-    let lastEntityTime = 0;
+    const ENTITY_NAMES = ["Sombra IV", "Ente Clase A", "Vigía Espectral", "Poltergeist", "Remanente", "Aparición"];
     let currentEntityName = "";
+
+    async function initApp() {
+        document.getElementById('start-overlay').style.display = 'none';
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } 
+            });
+            video.srcObject = stream;
+            video.play();
+            
+            // Ajustar canvas al tamaño de pantalla móvil
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+            pose.setOptions({ modelComplexity: 0, // 0 es más rápido para teléfonos lentos
+                             minDetectionConfidence: 0.5 });
+            pose.onResults(onResults);
+
+            const frame = async () => {
+                await pose.send({ image: video });
+                document.getElementById('timer').innerText = new Date().toLocaleTimeString();
+                requestAnimationFrame(frame);
+            };
+            frame();
+        } catch (e) {
+            alert("Error: Activa los permisos de cámara.");
+        }
+    }
 
     function addLog(name) {
         const time = new Date().toLocaleTimeString().split(' ')[0];
         const entry = document.createElement('div');
         entry.className = 'log-entry';
-        entry.innerHTML = `<span style="color:var(--main)">[${time}]</span> ${name.toUpperCase()} DETECTADO`;
+        entry.innerHTML = `[${time}] ${name.toUpperCase()} DETECTADO`;
         registry.prepend(entry);
-        if (registry.children.length > 6) registry.lastChild.remove();
-    }
-
-    async function init() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        video.srcObject = stream;
-        video.play();
-        
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.6 });
-        pose.onResults(onResults);
-
-        const frame = async () => {
-            await pose.send({ image: video });
-            document.getElementById('timer').innerText = new Date().toLocaleTimeString();
-            requestAnimationFrame(frame);
-        };
-        frame();
+        if (registry.children.length > 5) registry.lastChild.remove();
     }
 
     function onResults(results) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
         if (results.poseLandmarks) {
-            processDetection(results.poseLandmarks);
+            const emf = (1 + Math.random() * 9).toFixed(2);
+            document.getElementById('val-emf').innerText = emf;
+            document.getElementById('val-entities').innerText = "1";
+            proxFill.style.height = (emf * 10) + "%";
+
+            if (!currentEntityName) {
+                currentEntityName = ENTITY_NAMES[Math.floor(Math.random() * ENTITY_NAMES.length)];
+                addLog(currentEntityName);
+                speak(`Alerta. ${currentEntityName} identificado.`);
+            }
+
+            drawGhostEffect(results.poseLandmarks);
+            
+            const head = results.poseLandmarks[0];
+            entityLabel.style.display = 'block';
+            entityLabel.style.left = (head.x * canvas.width - 40) + 'px';
+            entityLabel.style.top = (head.y * canvas.height - 50) + 'px';
+            entityLabel.innerText = currentEntityName;
         } else {
-            document.getElementById('val-entities').innerText = "0";
-            document.getElementById('val-emf').innerText = (Math.random()*0.2).toFixed(2);
+            currentEntityName = "";
             entityLabel.style.display = 'none';
             proxFill.style.height = "5%";
-            currentEntityName = "";
+            document.getElementById('val-entities').innerText = "0";
         }
-    }
-
-    function processDetection(lm) {
-        document.getElementById('val-entities').innerText = "1";
-        const emf = (2 + Math.random() * 8).toFixed(2);
-        document.getElementById('val-emf').innerText = emf;
-        proxFill.style.height = (emf * 10) + "%";
-
-        // Elegir nombre nuevo si es una detección nueva
-        if (!currentEntityName) {
-            currentEntityName = ENTITY_NAMES[Math.floor(Math.random() * ENTITY_NAMES.length)];
-            addLog(currentEntityName);
-            speak(`Alerta. ${currentEntityName} identificado.`);
-        }
-
-        // Dibujar figura
-        drawGhostEffect(lm);
-
-        // Posicionar etiqueta
-        const head = lm[0];
-        entityLabel.style.display = 'block';
-        entityLabel.style.left = (head.x * canvas.width - 50) + 'px';
-        entityLabel.style.top = (head.y * canvas.height - 60) + 'px';
-        entityLabel.innerText = currentEntityName;
     }
 
     function drawGhostEffect(lm) {
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.strokeStyle = "rgba(0, 255, 65, 0.4)";
-        
-        // Dibujar cuerpo inestable
         ctx.beginPath();
         lm.forEach((p, i) => {
-            const x = p.x * canvas.width + (Math.random() * 6 - 3);
-            const y = p.y * canvas.height + (Math.random() * 6 - 3);
-            
+            const x = p.x * canvas.width;
+            const y = p.y * canvas.height;
             if (i === 0) ctx.moveTo(x, y);
-            
-            // Puntos de energía
-            ctx.fillStyle = i < 11 ? "rgba(255, 0, 0, 0.5)" : "rgba(0, 242, 255, 0.5)";
-            ctx.fillRect(x-2, y-2, 4, 4);
-            
-            if (i % 3 === 0) ctx.lineTo(x, y);
+            if (i % 2 === 0) ctx.lineTo(x + (Math.random()*4-2), y + (Math.random()*4-2));
+            ctx.fillStyle = i < 11 ? "red" : "cyan";
+            ctx.fillRect(x, y, 2, 2);
         });
         ctx.stroke();
     }
@@ -168,12 +180,9 @@
     function speak(txt) {
         const s = new SpeechSynthesisUtterance(txt);
         s.lang = 'es-ES';
-        s.pitch = 0.4;
-        s.rate = 0.85;
+        s.pitch = 0.5;
         window.speechSynthesis.speak(s);
     }
-
-    init();
   </script>
 </body>
 </html>
