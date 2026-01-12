@@ -3,110 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lector Pro Traducto</title>
+    <title>Lector OCR Pro</title>
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <style>
-        :root {
-            --primary: #6200ee;
-            --highlight: #ffff00;
-        }
-        body {
-            font-family: sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
-            padding-bottom: 100px;
-        }
-        #text-container {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            line-height: 1.6;
-            font-size: 1.1em;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            min-height: 300px;
-        }
-        .word { display: inline-block; margin-right: 4px; border-radius: 3px; }
-        .active { background-color: var(--highlight); transition: background 0.1s; }
+        :root { --primary: #6200ee; --highlight: #ffff00; }
+        body { font-family: sans-serif; margin: 0; background: #f5f5f5; padding-bottom: 120px; }
         
-        /* Menú Inferior Estilo App */
-        .bottom-menu {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #333;
-            color: white;
-            display: flex;
-            justify-content: space-around;
-            padding: 15px;
-            border-top-left-radius: 15px;
-            border-top-right-radius: 15px;
-        }
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        .controls { margin-top: 10px; display: none; background: #444; padding: 15px; position: fixed; bottom: 70px; width: 90%; left: 5%; border-radius: 10px;}
+        /* Contenedor de video y resultados */
+        #camera-container { width: 100%; height: 300px; background: #000; position: relative; overflow: hidden; }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        #text-container { padding: 20px; line-height: 1.6; font-size: 1.1em; background: white; min-height: 200px; }
+        
+        .word { display: inline-block; margin-right: 4px; border-radius: 3px; }
+        .active { background-color: var(--highlight); }
+
+        /* Menú y Controles */
+        .bottom-menu { position: fixed; bottom: 0; left: 0; right: 0; background: #222; display: flex; justify-content: space-around; padding: 15px; z-index: 100; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        
+        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }
+        
+        canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="text-container">
-        Pulsa el botón "Editar" para pegar tu texto en inglés aquí.
+    <div id="camera-container">
+        <video id="video" autoplay playsinline></video>
+        <div id="loading">Analizando texto...</div>
     </div>
 
-    <div id="settings" class="controls">
-        <label>Velocidad:</label>
-        <input type="range" id="rate" min="0.5" max="2" value="1" step="0.1">
-        <br><br>
-        <button onclick="translateText()">Traducir a Español</button>
+    <div id="text-container">
+        Apunta con la cámara y presiona "📸 Capturar" para extraer el texto.
     </div>
+
+    <canvas id="canvas"></canvas>
 
     <div class="bottom-menu">
-        <button onclick="document.getElementById('settings').style.display = 
-            document.getElementById('settings').style.display === 'block' ? 'none' : 'block'">⚙️ Ajustes</button>
+        <button onclick="captureImage()">📸 Capturar</button>
         <button onclick="speak()">▶️ Leer</button>
-        <button onclick="stop()">⏹️ Parar</button>
-        <button onclick="editText()">✏️ Editar</button>
+        <button onclick="translateText()">🌍 Traducir</button>
+        <button onclick="stop()">⏹️</button>
     </div>
 
     <script>
-        let synth = window.speechSynthesis;
-        let originalText = "Welcome to your reading app. This is a demonstration of English text to be translated.";
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const loading = document.getElementById('loading');
         const container = document.getElementById('text-container');
+        let synth = window.speechSynthesis;
 
-        function renderText(text) {
-            container.innerHTML = text.split(' ').map(word => `<span class="word">${word}</span>`).join(' ');
+        // Iniciar Cámara
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } // Usa la cámara trasera
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("No se pudo acceder a la cámara: " + err);
+            }
         }
 
-        renderText(originalText);
+        // Capturar foto y extraer texto (OCR)
+        async function captureImage() {
+            loading.style.display = 'block';
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Tesseract procesa la imagen
+            Tesseract.recognize(
+                canvas.toDataURL('image/png'),
+                'eng', // Idioma a buscar en la imagen
+                { logger: m => console.log(m) }
+            ).then(({ data: { text } }) => {
+                loading.style.display = 'none';
+                renderText(text);
+            });
+        }
+
+        function renderText(text) {
+            container.innerHTML = text.split(/\s+/).map(word => `<span class="word">${word}</span>`).join(' ');
+        }
 
         function speak() {
             if (synth.speaking) return;
-            const words = document.querySelectorAll('.word');
             const utterance = new SpeechSynthesisUtterance(container.innerText);
-            
-            // Configurar idioma (Detectar si es inglés o español)
-            utterance.lang = 'en-US'; 
-            utterance.rate = document.getElementById('rate').value;
+            // Si el texto es inglés, usa 'en-US', si es español tras traducir, usa 'es-ES'
+            utterance.lang = container.innerText.includes(" ") ? 'en-US' : 'es-ES'; 
 
             utterance.onboundary = (event) => {
                 if (event.name === 'word') {
-                    const wordIndex = getWordAtOffset(event.charIndex);
-                    highlightWord(wordIndex);
+                    const words = container.innerText.substring(0, event.charIndex).trim().split(/\s+/);
+                    highlightWord(words.length - 1);
                 }
             };
-
             synth.speak(utterance);
-        }
-
-        function getWordAtOffset(offset) {
-            const text = container.innerText;
-            return text.substring(0, offset).split(' ').length - 1;
         }
 
         function highlightWord(index) {
@@ -115,34 +109,20 @@
             if (spans[index]) spans[index].classList.add('active');
         }
 
-        function stop() {
-            synth.cancel();
-            document.querySelectorAll('.word').forEach(s => s.classList.remove('active'));
-        }
-
-        function editText() {
-            const newText = prompt("Pega el texto en Inglés aquí:", container.innerText);
-            if (newText) {
-                originalText = newText;
-                renderText(newText);
-            }
-        }
-
         async function translateText() {
             const text = container.innerText;
-            // Nota: Para una traducción real sin costo, usamos una URL de consulta de Google.
-            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURI(text)}`;
-            
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURI(text)}`;
             try {
                 const response = await fetch(url);
                 const data = await response.json();
                 const translated = data[0].map(item => item[0]).join('');
                 renderText(translated);
-                alert("Texto traducido. Cambia el idioma de lectura a Español en la configuración si es necesario.");
-            } catch (e) {
-                alert("Error en la traducción.");
-            }
+            } catch (e) { alert("Error al traducir"); }
         }
+
+        function stop() { synth.cancel(); }
+
+        startCamera();
     </script>
 </body>
 </html>
