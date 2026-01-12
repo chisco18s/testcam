@@ -3,186 +3,186 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>AI Paranormal Detector</title>
+  <title>Spectral AI - Entity Hunter</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <style>
-    :root { --ghost-green: #00ff88; --ghost-cyan: #00f2ff; --alert: #ff3c3c; --bg: #050a05; }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-    body { background: var(--bg); color: var(--ghost-green); overflow: hidden; }
+    :root { --main: #00ff41; --danger: #ff0000; --ghost: #00f2ff; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', Courier, monospace; }
+    body { background: #000; color: var(--main); overflow: hidden; }
 
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.6) sepia(1) hue-rotate(100deg) saturate(2); opacity: 0.3; }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; }
+    /* Cámara con filtro de ruido */
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.5) contrast(1.2) grayscale(1); opacity: 0.4; }
+    #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; }
 
-    /* HUD PARANORMAL */
-    #hud { position: absolute; top: 20px; width: 100%; padding: 0 20px; z-index: 10; display: none; }
-    .stat-card { background: rgba(0, 30, 0, 0.7); padding: 10px; border: 1px solid var(--ghost-green); border-radius: 4px; min-width: 100px; }
-    .val { font-size: 20px; font-weight: bold; display: block; color: var(--ghost-cyan); }
-    .lab { font-size: 10px; text-transform: uppercase; color: var(--ghost-green); }
+    /* HUD Superior */
+    #hud-top { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 10px; background: rgba(0,0,0,0.5); border-bottom: 1px solid var(--main); }
+    .data-box { text-align: center; }
+    .label { font-size: 10px; display: block; }
+    .value { font-size: 18px; font-weight: bold; color: white; }
 
-    /* RADAR */
-    #radar {
-      position: absolute; bottom: 30px; left: 30px; width: 120px; height: 120px;
-      border: 2px solid var(--ghost-green); border-radius: 50%; z-index: 20;
-      background: repeating-radial-gradient(circle, transparent 0, transparent 20px, rgba(0,255,136,0.1) 21px);
-    }
-    #radar-sweep {
-      width: 100%; height: 100%; border-radius: 50%;
-      background: conic-gradient(from 0deg, rgba(0,255,136,0.5) 0deg, transparent 90deg);
-      animation: sweep 3s linear infinite;
-    }
+    /* Barra de Proximidad */
+    #proximity-bar { position: absolute; right: 20px; top: 20%; width: 10px; height: 60%; border: 1px solid var(--main); z-index: 20; }
+    #proximity-fill { width: 100%; height: 0%; background: var(--main); position: absolute; bottom: 0; transition: height 0.3s; box-shadow: 0 0 15px var(--main); }
 
-    @keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    /* Consola de Eventos */
+    #console { position: absolute; bottom: 120px; left: 20px; width: 250px; height: 80px; overflow: hidden; font-size: 11px; z-index: 20; color: var(--ghost); }
 
-    .btn-start { background: transparent; color: var(--ghost-green); padding: 15px 40px; border: 2px solid var(--ghost-green); font-size: 1.5rem; cursor: pointer; transition: 0.3s; }
-    .btn-start:hover { background: var(--ghost-green); color: black; }
+    /* Radar y Botones */
+    .bottom-ui { position: fixed; bottom: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: center; z-index: 30; background: linear-gradient(transparent, black); }
+    #radar { width: 80px; height: 80px; border: 1px solid var(--main); border-radius: 50%; position: relative; overflow: hidden; }
+    #sweep { width: 100%; height: 100%; background: conic-gradient(from 0deg, rgba(0,255,65,0.4) 0deg, transparent 90deg); animation: rotate 2s linear infinite; border-radius: 50%; }
     
-    .overlay { position: fixed; inset: 0; background: black; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-    #big-msg { position: absolute; top: 70%; left: 50%; transform: translateX(-50%); z-index: 50; font-size: 1.5rem; text-shadow: 0 0 10px var(--ghost-green); }
-    
-    .hidden { display: none !important; }
-    .glitch { animation: glitch 0.2s infinite; }
-    @keyframes glitch { 0% { opacity: 1; } 50% { opacity: 0.7; transform: translateX(2px); } 100% { opacity: 1; } }
+    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+    .scanner-line { position: absolute; width: 100%; height: 2px; background: rgba(0,255,65,0.2); z-index: 15; animation: scan 4s linear infinite; }
+    @keyframes scan { from { top: 0; } to { top: 100%; } }
+
+    .entity-tag { position: absolute; color: var(--danger); font-weight: bold; padding: 2px 5px; border: 1px solid var(--danger); background: rgba(0,0,0,0.8); z-index: 40; pointer-events: none; text-transform: uppercase; }
   </style>
 </head>
 <body>
 
-  <div id="menu" class="overlay">
-    <h1 style="font-size: 2rem; margin-bottom: 10px; letter-spacing: 5px;">SPECTRAL AI v1.0</h1>
-    <p style="margin-bottom: 30px; color: #008844;">ADVERTENCIA: Detección de biometría espectral activa</p>
-    <button class="btn-start" onclick="startScanner()">INICIAR ESCANEO</button>
+  <video id="video" playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div class="scanner-line"></div>
+
+  <div id="hud-top">
+    <div class="data-box"><span class="label">SENS_AI</span><span class="value" id="val-sens">ACTIVO</span></div>
+    <div class="data-box"><span class="label">FLUX_EMF</span><span class="value" id="val-emf">0.02</span></div>
+    <div class="data-box"><span class="label">STATUS</span><span class="value" style="color:var(--danger)">BUSCANDO</span></div>
   </div>
 
-  <div id="hud">
-    <div style="display: flex; gap: 10px;">
-      <div class="stat-card"><span class="lab">EMF Level</span><span id="ui-emf" class="val">0.1 μT</span></div>
-      <div class="stat-card"><span class="lab">Entidades</span><span id="ui-entities" class="val">0</span></div>
-      <div class="stat-card"><span class="lab">Temp</span><span id="ui-temp" class="val">18.4°C</span></div>
+  <div id="proximity-bar"><div id="proximity-fill"></div></div>
+  <div id="console"></div>
+  <div id="entity-label" class="entity-tag" style="display:none">ENTITY: DETECTED</div>
+
+  <div class="bottom-ui">
+    <div id="radar"><div id="sweep"></div></div>
+    <div style="text-align: right">
+        <p style="font-size: 10px">SISTEMA DE ANÁLISIS ESPECTRAL</p>
+        <p id="clock" style="font-size: 14px">00:00:00</p>
     </div>
   </div>
 
-  <div id="radar"><div id="radar-sweep"></div></div>
-  <div id="big-msg"></div>
-
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
-
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-
   <script>
-    const state = {
-        active: false,
-        entities: 0,
-        emf: 0.1,
-        temp: 18.4,
-        lastSpeak: 0,
-        anomalies: []
-    };
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const consoleDiv = document.getElementById('console');
+    const proxFill = document.getElementById('proximity-fill');
+    const entityLabel = document.getElementById('entity-label');
 
-    const dom = {
-        video: document.getElementById('video'),
-        canvas: document.getElementById('canvas'),
-        ctx: document.getElementById('canvas').getContext('2d'),
-        msg: document.getElementById('big-msg')
-    };
+    const NAMES = ["Sombra", "Poltergeist", "Ente", "Eco Psíquico", "Aparición", "Anomalía v.4"];
+    let lastSpeak = 0;
 
-    function speak(txt) {
-        if (Date.now() - state.lastSpeak < 4000) return;
-        state.lastSpeak = Date.now();
-        const s = new SpeechSynthesisUtterance(txt);
-        s.lang = 'es-ES';
-        s.pitch = 0.5; // Voz más tétrica
-        s.rate = 0.8;
-        window.speechSynthesis.speak(s);
-        dom.msg.innerText = ">> " + txt.toUpperCase();
-        setTimeout(() => dom.msg.innerText = "", 3000);
+    function addLog(msg) {
+        const p = document.createElement('div');
+        p.innerText = `> ${msg}`;
+        consoleDiv.prepend(p);
+        if (consoleDiv.children.length > 5) consoleDiv.lastChild.remove();
     }
 
-    async function startScanner() {
-        document.getElementById('menu').classList.add('hidden');
-        document.getElementById('hud').style.display = 'block';
+    async function start() {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        video.play();
         
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
-            });
-            dom.video.srcObject = stream;
-            await dom.video.play();
-            dom.canvas.width = dom.video.videoWidth;
-            dom.canvas.height = dom.video.videoHeight;
-            state.active = true;
-            initAI();
-            simulateEnvironment();
-        } catch (e) { alert("Error al acceder a la cámara"); }
-    }
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-    function simulateEnvironment() {
-        setInterval(() => {
-            if (!state.active) return;
-            // Variaciones aleatorias de EMF y Temperatura
-            state.emf = (Math.random() * 5).toFixed(1);
-            state.temp = (15 + Math.random() * 5).toFixed(1);
-            document.getElementById('ui-emf').innerText = `${state.emf} μT`;
-            document.getElementById('ui-temp').innerText = `${state.temp} °C`;
-            
-            if (state.emf > 4) {
-                document.body.classList.add('glitch');
-                setTimeout(() => document.body.classList.remove('glitch'), 500);
-            }
-        }, 2000);
-    }
-
-    function drawGhostVisuals(lm) {
-        const ctx = dom.ctx;
-        
-        // Dibujar esqueleto espectral
-        ctx.strokeStyle = "rgba(0, 255, 136, 0.5)";
-        ctx.lineWidth = 2;
-        
-        // Efecto de partículas alrededor de la "entidad"
-        lm.forEach((point, i) => {
-            if (i > 10 && i < 20) { // Solo articulaciones principales
-                ctx.beginPath();
-                ctx.arc(point.x * dom.canvas.width, point.y * dom.canvas.height, 5, 0, Math.PI*2);
-                ctx.fillStyle = "rgba(0, 242, 255, 0.8)";
-                ctx.fill();
-                
-                // Círculos de interferencia
-                ctx.beginPath();
-                ctx.arc(point.x * dom.canvas.width, point.y * dom.canvas.height, Math.random() * 20, 0, Math.PI*2);
-                ctx.stroke();
-            }
-        });
-
-        // Si detecta una cara (punto 0), poner marcador de entidad
-        if (lm[0].visibility > 0.5) {
-            ctx.fillStyle = "rgba(255, 60, 60, 0.3)";
-            ctx.font = "15px Courier New";
-            ctx.fillText("ENTIDAD_DETECTADA", lm[0].x * dom.canvas.width - 50, lm[0].y * dom.canvas.height - 40);
-        }
-    }
-
-    function initAI() {
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
         pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
         
-        pose.onResults(results => {
-            dom.ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
-            
-            if (results.poseLandmarks) {
-                state.entities = 1;
-                drawGhostVisuals(results.poseLandmarks);
-                if (Math.random() < 0.01) speak("Presencia humana detectada en el plano visual");
-            } else {
-                state.entities = 0;
-            }
-            document.getElementById('ui-entities').innerText = state.entities;
-        });
+        pose.onResults(onResults);
 
         const frame = async () => {
-            if (state.active) await pose.send({ image: dom.video });
+            await pose.send({ image: video });
+            updateClock();
             requestAnimationFrame(frame);
         };
         frame();
     }
+
+    function onResults(results) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (results.poseLandmarks) {
+            drawGhost(results.poseLandmarks);
+            updateUI(true);
+        } else {
+            updateUI(false);
+            entityLabel.style.display = 'none';
+        }
+    }
+
+    function drawGhost(lm) {
+        // Dibujar aura de partículas
+        ctx.fillStyle = "rgba(0, 242, 255, 0.4)";
+        lm.forEach((p, i) => {
+            if (i % 2 === 0) {
+                const x = p.x * canvas.width;
+                const y = p.y * canvas.height;
+                
+                // Efecto de distorsión
+                ctx.beginPath();
+                ctx.arc(x + (Math.random()*10 - 5), y + (Math.random()*10 - 5), 4, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Líneas de conexión inestables
+                if(i > 0) {
+                    ctx.strokeStyle = "rgba(0, 255, 65, 0.2)";
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                }
+            }
+        });
+
+        // Posicionar etiqueta de nombre sobre la cabeza (landmark 0)
+        const head = lm[0];
+        const hX = head.x * canvas.width;
+        const hY = head.y * canvas.height;
+        
+        entityLabel.style.display = 'block';
+        entityLabel.style.left = hX + 'px';
+        entityLabel.style.top = (hY - 50) + 'px';
+        
+        if (Math.random() < 0.05) {
+            const randomName = NAMES[Math.floor(Math.random()*NAMES.length)];
+            entityLabel.innerText = `ENTITY: ${randomName}`;
+        }
+    }
+
+    function updateUI(detected) {
+        const emf = document.getElementById('val-emf');
+        if (detected) {
+            proxFill.style.height = (50 + Math.random() * 50) + "%";
+            emf.innerText = (Math.random() * 8).toFixed(2);
+            if (Date.now() - lastSpeak > 5000) {
+                speak("Atención, anomalía detectada. Analizando patrón de energía.");
+                addLog("Anomalía detectada en cuadrante visual");
+                lastSpeak = Date.now();
+            }
+        } else {
+            proxFill.style.height = (Math.random() * 10) + "%";
+            emf.innerText = (Math.random() * 0.1).toFixed(2);
+        }
+    }
+
+    function speak(txt) {
+        const s = new SpeechSynthesisUtterance(txt);
+        s.lang = 'es-ES';
+        s.pitch = 0.6;
+        s.rate = 0.9;
+        window.speechSynthesis.speak(s);
+    }
+
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').innerText = now.toTimeString().split(' ')[0];
+    }
+
+    start();
   </script>
 </body>
 </html>
