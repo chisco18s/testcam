@@ -3,65 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Spectral AI - Entity Hunter</title>
+  <title>Spectral AI - Registry Edition</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <style>
-    :root { --main: #00ff41; --danger: #ff0000; --ghost: #00f2ff; }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', Courier, monospace; }
+    :root { --main: #00ff41; --danger: #ff3c3c; --ghost: #00f2ff; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
     body { background: #000; color: var(--main); overflow: hidden; }
 
-    /* Cámara con filtro de ruido */
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.5) contrast(1.2) grayscale(1); opacity: 0.4; }
+    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.4) contrast(1.5) grayscale(1); opacity: 0.35; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; }
 
     /* HUD Superior */
-    #hud-top { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 10px; background: rgba(0,0,0,0.5); border-bottom: 1px solid var(--main); }
+    #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 15px; background: rgba(0,20,0,0.6); border-bottom: 1px solid var(--main); }
     .data-box { text-align: center; }
-    .label { font-size: 10px; display: block; }
-    .value { font-size: 18px; font-weight: bold; color: white; }
+    .value { font-size: 1.2rem; font-weight: bold; color: white; text-shadow: 0 0 5px var(--main); }
 
-    /* Barra de Proximidad */
-    #proximity-bar { position: absolute; right: 20px; top: 20%; width: 10px; height: 60%; border: 1px solid var(--main); z-index: 20; }
-    #proximity-fill { width: 100%; height: 0%; background: var(--main); position: absolute; bottom: 0; transition: height 0.3s; box-shadow: 0 0 15px var(--main); }
+    /* Registro de Actividad (Historial de Nombres) */
+    #registry-console { 
+        position: absolute; bottom: 120px; left: 20px; width: 280px; height: 120px; 
+        background: rgba(0, 30, 0, 0.4); border-left: 2px solid var(--ghost);
+        padding: 10px; overflow-y: hidden; font-size: 12px; z-index: 25;
+        display: flex; flex-direction: column-reverse;
+    }
+    .log-entry { margin-bottom: 4px; color: var(--ghost); animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
 
-    /* Consola de Eventos */
-    #console { position: absolute; bottom: 120px; left: 20px; width: 250px; height: 80px; overflow: hidden; font-size: 11px; z-index: 20; color: var(--ghost); }
-
-    /* Radar y Botones */
-    .bottom-ui { position: fixed; bottom: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: center; z-index: 30; background: linear-gradient(transparent, black); }
-    #radar { width: 80px; height: 80px; border: 1px solid var(--main); border-radius: 50%; position: relative; overflow: hidden; }
-    #sweep { width: 100%; height: 100%; background: conic-gradient(from 0deg, rgba(0,255,65,0.4) 0deg, transparent 90deg); animation: rotate 2s linear infinite; border-radius: 50%; }
+    /* Otros Elementos */
+    #proximity-bar { position: absolute; right: 15px; top: 25%; width: 12px; height: 50%; border: 1px solid #333; z-index: 20; border-radius: 5px; overflow: hidden;}
+    #proximity-fill { width: 100%; height: 0%; background: linear-gradient(to top, var(--main), var(--danger)); transition: height 0.2s; }
     
+    .entity-tag { position: absolute; color: white; font-weight: bold; padding: 4px 10px; border: 2px solid var(--danger); background: rgba(255,0,0,0.2); z-index: 40; pointer-events: none; backdrop-filter: blur(2px); }
+    
+    .bottom-bar { position: fixed; bottom: 0; width: 100%; padding: 20px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; align-items: center; z-index: 30; }
+    #radar { width: 60px; height: 60px; border: 1px solid var(--main); border-radius: 50%; position: relative; }
+    #sweep { width: 100%; height: 100%; background: conic-gradient(from 0deg, rgba(0,255,65,0.4) 0deg, transparent 90deg); animation: rotate 2s linear infinite; border-radius: 50%; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
-
-    .scanner-line { position: absolute; width: 100%; height: 2px; background: rgba(0,255,65,0.2); z-index: 15; animation: scan 4s linear infinite; }
-    @keyframes scan { from { top: 0; } to { top: 100%; } }
-
-    .entity-tag { position: absolute; color: var(--danger); font-weight: bold; padding: 2px 5px; border: 1px solid var(--danger); background: rgba(0,0,0,0.8); z-index: 40; pointer-events: none; text-transform: uppercase; }
   </style>
 </head>
 <body>
 
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
-  <div class="scanner-line"></div>
 
   <div id="hud-top">
-    <div class="data-box"><span class="label">SENS_AI</span><span class="value" id="val-sens">ACTIVO</span></div>
-    <div class="data-box"><span class="label">FLUX_EMF</span><span class="value" id="val-emf">0.02</span></div>
-    <div class="data-box"><span class="label">STATUS</span><span class="value" style="color:var(--danger)">BUSCANDO</span></div>
+    <div class="data-box"><div>EMF</div><div class="value" id="val-emf">0.00</div></div>
+    <div class="data-box"><div>ENTIDADES</div><div class="value" id="val-entities">0</div></div>
+    <div class="data-box"><div>REC</div><div class="value" style="color:red">● LIVE</div></div>
   </div>
 
   <div id="proximity-bar"><div id="proximity-fill"></div></div>
-  <div id="console"></div>
-  <div id="entity-label" class="entity-tag" style="display:none">ENTITY: DETECTED</div>
+  
+  <div id="registry-console"></div>
+  
+  <div id="entity-label" class="entity-tag" style="display:none">ANALIZANDO...</div>
 
-  <div class="bottom-ui">
+  <div class="bottom-bar">
     <div id="radar"><div id="sweep"></div></div>
-    <div style="text-align: right">
-        <p style="font-size: 10px">SISTEMA DE ANÁLISIS ESPECTRAL</p>
-        <p id="clock" style="font-size: 14px">00:00:00</p>
+    <div style="text-align: right; color: var(--main); font-size: 12px;">
+        SISTEMA DE REGISTRO ESPECTRAL<br>
+        <span id="timer" style="font-size: 18px; color: white;">00:00:00</span>
     </div>
   </div>
 
@@ -69,21 +69,24 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const consoleDiv = document.getElementById('console');
-    const proxFill = document.getElementById('proximity-fill');
+    const registry = document.getElementById('registry-console');
     const entityLabel = document.getElementById('entity-label');
+    const proxFill = document.getElementById('proximity-fill');
 
-    const NAMES = ["Sombra", "Poltergeist", "Ente", "Eco Psíquico", "Aparición", "Anomalía v.4"];
-    let lastSpeak = 0;
+    const ENTITY_NAMES = ["Sombra tipo IV", "Remanente Psíquico", "Poltergeist", "Ente Clase A", "Vigía Espectral", "Infante de Bruma", "Aparición"];
+    let lastEntityTime = 0;
+    let currentEntityName = "";
 
-    function addLog(msg) {
-        const p = document.createElement('div');
-        p.innerText = `> ${msg}`;
-        consoleDiv.prepend(p);
-        if (consoleDiv.children.length > 5) consoleDiv.lastChild.remove();
+    function addLog(name) {
+        const time = new Date().toLocaleTimeString().split(' ')[0];
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `<span style="color:var(--main)">[${time}]</span> ${name.toUpperCase()} DETECTADO`;
+        registry.prepend(entry);
+        if (registry.children.length > 6) registry.lastChild.remove();
     }
 
-    async function start() {
+    async function init() {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         video.srcObject = stream;
         video.play();
@@ -92,13 +95,12 @@
         canvas.height = window.innerHeight;
 
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
-        
+        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.6 });
         pose.onResults(onResults);
 
         const frame = async () => {
             await pose.send({ image: video });
-            updateClock();
+            document.getElementById('timer').innerText = new Date().toLocaleTimeString();
             requestAnimationFrame(frame);
         };
         frame();
@@ -108,81 +110,70 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (results.poseLandmarks) {
-            drawGhost(results.poseLandmarks);
-            updateUI(true);
+            processDetection(results.poseLandmarks);
         } else {
-            updateUI(false);
+            document.getElementById('val-entities').innerText = "0";
+            document.getElementById('val-emf').innerText = (Math.random()*0.2).toFixed(2);
             entityLabel.style.display = 'none';
+            proxFill.style.height = "5%";
+            currentEntityName = "";
         }
     }
 
-    function drawGhost(lm) {
-        // Dibujar aura de partículas
-        ctx.fillStyle = "rgba(0, 242, 255, 0.4)";
-        lm.forEach((p, i) => {
-            if (i % 2 === 0) {
-                const x = p.x * canvas.width;
-                const y = p.y * canvas.height;
-                
-                // Efecto de distorsión
-                ctx.beginPath();
-                ctx.arc(x + (Math.random()*10 - 5), y + (Math.random()*10 - 5), 4, 0, Math.PI*2);
-                ctx.fill();
-                
-                // Líneas de conexión inestables
-                if(i > 0) {
-                    ctx.strokeStyle = "rgba(0, 255, 65, 0.2)";
-                    ctx.lineTo(x, y);
-                    ctx.stroke();
-                }
-            }
-        });
+    function processDetection(lm) {
+        document.getElementById('val-entities').innerText = "1";
+        const emf = (2 + Math.random() * 8).toFixed(2);
+        document.getElementById('val-emf').innerText = emf;
+        proxFill.style.height = (emf * 10) + "%";
 
-        // Posicionar etiqueta de nombre sobre la cabeza (landmark 0)
+        // Elegir nombre nuevo si es una detección nueva
+        if (!currentEntityName) {
+            currentEntityName = ENTITY_NAMES[Math.floor(Math.random() * ENTITY_NAMES.length)];
+            addLog(currentEntityName);
+            speak(`Alerta. ${currentEntityName} identificado.`);
+        }
+
+        // Dibujar figura
+        drawGhostEffect(lm);
+
+        // Posicionar etiqueta
         const head = lm[0];
-        const hX = head.x * canvas.width;
-        const hY = head.y * canvas.height;
-        
         entityLabel.style.display = 'block';
-        entityLabel.style.left = hX + 'px';
-        entityLabel.style.top = (hY - 50) + 'px';
-        
-        if (Math.random() < 0.05) {
-            const randomName = NAMES[Math.floor(Math.random()*NAMES.length)];
-            entityLabel.innerText = `ENTITY: ${randomName}`;
-        }
+        entityLabel.style.left = (head.x * canvas.width - 50) + 'px';
+        entityLabel.style.top = (head.y * canvas.height - 60) + 'px';
+        entityLabel.innerText = currentEntityName;
     }
 
-    function updateUI(detected) {
-        const emf = document.getElementById('val-emf');
-        if (detected) {
-            proxFill.style.height = (50 + Math.random() * 50) + "%";
-            emf.innerText = (Math.random() * 8).toFixed(2);
-            if (Date.now() - lastSpeak > 5000) {
-                speak("Atención, anomalía detectada. Analizando patrón de energía.");
-                addLog("Anomalía detectada en cuadrante visual");
-                lastSpeak = Date.now();
-            }
-        } else {
-            proxFill.style.height = (Math.random() * 10) + "%";
-            emf.innerText = (Math.random() * 0.1).toFixed(2);
-        }
+    function drawGhostEffect(lm) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(0, 255, 65, 0.4)";
+        
+        // Dibujar cuerpo inestable
+        ctx.beginPath();
+        lm.forEach((p, i) => {
+            const x = p.x * canvas.width + (Math.random() * 6 - 3);
+            const y = p.y * canvas.height + (Math.random() * 6 - 3);
+            
+            if (i === 0) ctx.moveTo(x, y);
+            
+            // Puntos de energía
+            ctx.fillStyle = i < 11 ? "rgba(255, 0, 0, 0.5)" : "rgba(0, 242, 255, 0.5)";
+            ctx.fillRect(x-2, y-2, 4, 4);
+            
+            if (i % 3 === 0) ctx.lineTo(x, y);
+        });
+        ctx.stroke();
     }
 
     function speak(txt) {
         const s = new SpeechSynthesisUtterance(txt);
         s.lang = 'es-ES';
-        s.pitch = 0.6;
-        s.rate = 0.9;
+        s.pitch = 0.4;
+        s.rate = 0.85;
         window.speechSynthesis.speak(s);
     }
 
-    function updateClock() {
-        const now = new Date();
-        document.getElementById('clock').innerText = now.toTimeString().split(' ')[0];
-    }
-
-    start();
+    init();
   </script>
 </body>
 </html>
