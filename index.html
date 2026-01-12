@@ -1,231 +1,148 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>AI Coach Mirror - Pro</title>
-  <style>
-    :root { --neon: #00f2ff; --accent: #7000ff; --danger: #ff4444; --zen: #00ff88; --warning: #ffcc00; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; position: fixed; width: 100%; height: 100%; }
-    
-    /* ESPEJO: Invertimos el video para que se sienta natural */
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); filter: brightness(0.6); }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
-
-    /* BURBUJA DE CONSEJOS */
-    #coach-bubble {
-      position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.85); border: 2px solid var(--neon);
-      padding: 20px; border-radius: 25px; z-index: 100;
-      text-align: center; width: 85%; max-width: 400px; transition: 0.3s; opacity: 0;
-      box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
-    }
-    #coach-text { font-size: 1.1rem; font-weight: bold; color: var(--neon); }
-
-    /* HUD */
-    #hud {
-      position: absolute; top: 20px; width: 100%; padding: 0 20px;
-      display: none; justify-content: space-between; z-index: 150;
-    }
-    .stat { background: rgba(0,0,0,0.8); padding: 15px; border-radius: 15px; border-top: 3px solid var(--neon); text-align: center; min-width: 110px;}
-    .value { font-size: 24px; font-weight: bold; display: block; }
-
-    /* MENU */
-    #main-menu {
-      position: absolute; inset: 0; z-index: 200;
-      background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-    }
-    .btn-action {
-      background: rgba(255,255,255,0.05); border: 2px solid var(--neon);
-      padding: 25px; border-radius: 20px; text-align: center; margin: 15px; cursor: pointer;
-      width: 280px; transition: 0.3s;
-    }
-    .btn-action:hover { background: var(--accent); }
-
-    #btn-exit {
-        position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-        padding: 12px 30px; background: var(--danger); border: none; color: white;
-        border-radius: 50px; font-weight: bold; z-index: 160; display: none;
-    }
-
-    .hidden { display: none !important; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lector Pro Traducto</title>
+    <style>
+        :root {
+            --primary: #6200ee;
+            --highlight: #ffff00;
+        }
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            padding-bottom: 100px;
+        }
+        #text-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            line-height: 1.6;
+            font-size: 1.1em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            min-height: 300px;
+        }
+        .word { display: inline-block; margin-right: 4px; border-radius: 3px; }
+        .active { background-color: var(--highlight); transition: background 0.1s; }
+        
+        /* Menú Inferior Estilo App */
+        .bottom-menu {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #333;
+            color: white;
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
+        }
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .controls { margin-top: 10px; display: none; background: #444; padding: 15px; position: fixed; bottom: 70px; width: 90%; left: 5%; border-radius: 10px;}
+    </style>
 </head>
 <body>
 
-  <div id="coach-bubble"><div id="coach-text">Cargando...</div></div>
+    <div id="text-container">
+        Pulsa el botón "Editar" para pegar tu texto en inglés aquí.
+    </div>
 
-  <div id="main-menu">
-    <h1 style="color: var(--neon); margin-bottom: 30px; letter-spacing: 2px;">AI COACH SENSEI</h1>
-    <div onclick="startMode('fitness')" class="btn-action"><h2>🏋️ ENTRENAMIENTO</h2><p>Sentadillas y Técnica</p></div>
-    <div onclick="startMode('posture')" class="btn-action"><h2>🧘 POSTURA SMART</h2><p>Corrección de Espalda</p></div>
-  </div>
+    <div id="settings" class="controls">
+        <label>Velocidad:</label>
+        <input type="range" id="rate" min="0.5" max="2" value="1" step="0.1">
+        <br><br>
+        <button onclick="translateText()">Traducir a Español</button>
+    </div>
 
-  <div id="hud">
-    <div class="stat"><small>MÉTRICA</small><span id="v-reps" class="value">0</span></div>
-    <div class="stat"><small>ESTADO</small><span id="v-quality" class="value">--</span></div>
-  </div>
+    <div class="bottom-menu">
+        <button onclick="document.getElementById('settings').style.display = 
+            document.getElementById('settings').style.display === 'block' ? 'none' : 'block'">⚙️ Ajustes</button>
+        <button onclick="speak()">▶️ Leer</button>
+        <button onclick="stop()">⏹️ Parar</button>
+        <button onclick="editText()">✏️ Editar</button>
+    </div>
 
-  <button id="btn-exit" onclick="exitToMenu()">VOLVER AL MENÚ</button>
+    <script>
+        let synth = window.speechSynthesis;
+        let originalText = "Welcome to your reading app. This is a demonstration of English text to be translated.";
+        const container = document.getElementById('text-container');
 
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
-
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-
-  <script>
-    const coachBubble = document.getElementById('coach-bubble');
-    const coachText = document.getElementById('coach-text');
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const btnExit = document.getElementById('btn-exit');
-    
-    let poseDetector;
-    let isRunning = false;
-    let currentMode = null;
-    let reps = 0;
-    let stage = "up";
-    let lastSpoken = "";
-
-    // VOZ DEL ENTRENADOR
-    function coachSay(msg) {
-        if (msg === lastSpoken) return;
-        lastSpoken = msg;
-        coachText.innerText = msg;
-        coachBubble.style.opacity = 1;
-
-        const speech = new SpeechSynthesisUtterance(msg);
-        speech.lang = 'es-ES';
-        window.speechSynthesis.speak(speech);
-
-        setTimeout(() => { if(lastSpoken === msg) coachBubble.style.opacity = 0; }, 4000);
-    }
-
-    async function init() {
-      poseDetector = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-      poseDetector.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7 });
-      poseDetector.onResults(onResults);
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
-      video.srcObject = stream;
-      video.onloadedmetadata = () => { video.play(); resize(); };
-      
-      const loop = async () => {
-        if (video.readyState >= 2) await poseDetector.send({ image: video });
-        requestAnimationFrame(loop);
-      };
-      loop();
-    }
-
-    function onResults(results) {
-      ctx.save();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Sincronizamos el dibujo con el video invertido
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-
-      if (results.poseLandmarks) {
-        const lm = results.poseLandmarks;
-        drawSkeleton(lm);
-
-        if (isRunning) {
-            if (currentMode === 'fitness') analyzeFitness(lm);
-            if (currentMode === 'posture') analyzePosture(lm);
-        }
-      }
-      ctx.restore();
-    }
-
-    function analyzeFitness(lm) {
-        // Lógica de Sentadillas: Cadera (24) vs Rodilla (26)
-        const hip = lm[24].y;
-        const knee = lm[26].y;
-        const depth = hip - knee;
-
-        if (stage === "up" && depth > 0.05) {
-            stage = "down";
+        function renderText(text) {
+            container.innerHTML = text.split(' ').map(word => `<span class="word">${word}</span>`).join(' ');
         }
 
-        if (stage === "down") {
-            if (depth > 0.15) { // Profundidad correcta
-                document.getElementById('v-quality').innerText = "¡EXCELENTE!";
-                document.getElementById('v-quality').style.color = "var(--zen)";
-            } else {
-                document.getElementById('v-quality').innerText = "BAJA MÁS";
-                document.getElementById('v-quality').style.color = "var(--warning)";
-            }
+        renderText(originalText);
 
-            if (hip < knee - 0.1) { // Subió
-                if (depth > 0.12) {
-                    reps++;
-                    coachSay("¡Muy buena repetición!");
-                } else {
-                    coachSay("Esa no contó, baja un poco más la cadera");
+        function speak() {
+            if (synth.speaking) return;
+            const words = document.querySelectorAll('.word');
+            const utterance = new SpeechSynthesisUtterance(container.innerText);
+            
+            // Configurar idioma (Detectar si es inglés o español)
+            utterance.lang = 'en-US'; 
+            utterance.rate = document.getElementById('rate').value;
+
+            utterance.onboundary = (event) => {
+                if (event.name === 'word') {
+                    const wordIndex = getWordAtOffset(event.charIndex);
+                    highlightWord(wordIndex);
                 }
-                stage = "up";
+            };
+
+            synth.speak(utterance);
+        }
+
+        function getWordAtOffset(offset) {
+            const text = container.innerText;
+            return text.substring(0, offset).split(' ').length - 1;
+        }
+
+        function highlightWord(index) {
+            const spans = document.querySelectorAll('.word');
+            spans.forEach(s => s.classList.remove('active'));
+            if (spans[index]) spans[index].classList.add('active');
+        }
+
+        function stop() {
+            synth.cancel();
+            document.querySelectorAll('.word').forEach(s => s.classList.remove('active'));
+        }
+
+        function editText() {
+            const newText = prompt("Pega el texto en Inglés aquí:", container.innerText);
+            if (newText) {
+                originalText = newText;
+                renderText(newText);
             }
         }
-        document.getElementById('v-reps').innerText = reps;
-    }
 
-    function analyzePosture(lm) {
-        // Alineación Oreja (8) y Hombro (12)
-        const neckLean = Math.abs(lm[8].x - lm[12].x);
-        
-        if (neckLean > 0.12) {
-            coachSay("Cuidado, estás inclinando mucho el cuello hacia adelante");
-            document.getElementById('v-quality').innerText = "CORREGIR";
-            document.getElementById('v-quality').style.color = "var(--danger)";
-        } else {
-            document.getElementById('v-quality').innerText = "RECTA";
-            document.getElementById('v-quality').style.color = "var(--zen)";
-        }
-        document.getElementById('v-reps').innerText = "ESPALDA";
-    }
-
-    function drawSkeleton(lm) {
-        ctx.strokeStyle = "rgba(0, 242, 255, 0.8)";
-        ctx.lineWidth = 4;
-        const connections = [[11,12], [11,23], [12,24], [23,24], [11,13], [13,15], [12,14], [14,16], [23,25], [25,27], [24,26], [26,28]];
-        connections.forEach(([a,b]) => {
-            if(lm[a].visibility > 0.5 && lm[b].visibility > 0.5) {
-                ctx.beginPath();
-                ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
-                ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
-                ctx.stroke();
+        async function translateText() {
+            const text = container.innerText;
+            // Nota: Para una traducción real sin costo, usamos una URL de consulta de Google.
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURI(text)}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                const translated = data[0].map(item => item[0]).join('');
+                renderText(translated);
+                alert("Texto traducido. Cambia el idioma de lectura a Español en la configuración si es necesario.");
+            } catch (e) {
+                alert("Error en la traducción.");
             }
-        });
-    }
-
-    function startMode(mode) {
-        isRunning = true;
-        currentMode = mode;
-        reps = 0;
-        document.getElementById('main-menu').classList.add('hidden');
-        document.getElementById('hud').style.display = 'flex';
-        btnExit.style.display = 'block';
-        coachSay("Iniciando. Aléjate un poco para que pueda ver todo tu cuerpo.");
-    }
-
-    function exitToMenu() {
-        isRunning = false;
-        document.getElementById('main-menu').classList.remove('hidden');
-        document.getElementById('hud').style.display = 'none';
-        btnExit.style.display = 'none';
-        window.speechSynthesis.cancel();
-    }
-
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-
-    window.addEventListener('resize', resize);
-    init();
-  </script>
+        }
+    </script>
 </body>
 </html>
