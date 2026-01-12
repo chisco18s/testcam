@@ -1,257 +1,287 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro Ultra — Bio-Feedback & VFX</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-    
-    #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-    #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
-    
-    .ui { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; flex-wrap: wrap; }
-    button {
-      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.3); color: white;
-      padding: 12px 18px; border-radius: 50px; cursor: pointer; font-weight: bold;
-    }
-    button:active { background: #00f2ff; color: #000; }
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
 
-    .status {
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.8); padding: 10px 25px; border-radius: 30px;
-      color: #00f2ff; font-weight: bold; z-index: 10; border: 1px solid #00f2ff;
-    }
+<script>
+/* ===============================
+   ELEMENTOS DEL DOM
+================================*/
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const countEl = document.getElementById('count-val');
+const msgEl = document.getElementById('posture-msg');
 
-    #stats {
-      position: absolute; top: 80px; left: 20px; z-index: 10;
-      background: rgba(0,0,0,0.6); padding: 15px; border-radius: 15px;
-      border-left: 5px solid #00f2ff;
-    }
+/* ===============================
+   VARIABLES DEL SISTEMA
+================================*/
+let poseDetector;
+let isGhost = false;
+let currentFacing = 'user';
+let skeletonColor = "#00f2ff";
+let particles = [];
 
-    #v-button {
-      position: absolute; top: 50%; left: 30px; transform: translateY(-50%);
-      width: 100px; height: 100px; border: 3px solid rgba(0,242,255,0.4);
-      border-radius: 50%; z-index: 8; display: flex; align-items: center; 
-      justify-content: center; text-align: center; font-size: 10px;
-    }
-    #v-fill {
-      position: absolute; bottom: 0; width: 100%; height: 0%;
-      background: rgba(0,242,255,0.5); border-radius: 50%; transition: height 0.1s;
-    }
-  </style>
-</head>
-<body>
+let stage = "up";
+let vFillHeight = 0;
 
-  <div class="status" id="status">MODO BIOMÉTRICO ACTIVO</div>
-  
-  <div id="stats">
-    <span style="color:#00f2ff; font-size:12px;">SENTADILLAS</span><br>
-    <span id="count-val" style="font-size:30px;">0</span>
-    <div id="posture-msg" style="color: #ff4444; font-size: 10px;"></div>
-  </div>
+/* ===============================
+   NUEVO: SISTEMA DE RUTINAS
+================================*/
+let rutina = [];
+let nivelActual = "principiante";
+let indiceEjercicio = 0;
+let repeticionesRestantes = 0;
+let caloriasQuemadas = 0;
 
-  <div id="v-button">
-    <div id="v-fill"></div>
-    <span style="position:relative;">MANO IZQ<br>REINICIAR</span>
-  </div>
+// Rutinas por nivel
+const rutinas = {
+  principiante: [
+    { nombre: "Sentadillas", reps: 10, tipo: "reps", guia: "Baja como si fueras a sentarte, sube lento." },
+    { nombre: "Giro de tronco", reps: 20, tipo: "reps", guia: "Gira el torso suavemente izquierda-derecha." }
+  ],
+  intermedio: [
+    { nombre: "Sentadillas", reps: 15, tipo: "reps", guia: "Controla la bajada y mantén la espalda recta." },
+    { nombre: "Zancadas", reps: 12, tipo: "reps", guia: "Un paso adelante, baja recto, alterna piernas." },
+    { nombre: "Rodillas arriba", reps: 30, tipo: "tiempo", guia: "Eleva rodillas en ritmo constante." }
+  ],
+  avanzado: [
+    { nombre: "Sentadillas", reps: 20, tipo: "reps", guia: "Mayor profundidad sin perder postura." },
+    { nombre: "Zancadas", reps: 20, tipo: "reps", guia: "Gran paso, baja lento, alterna." },
+    { nombre: "Rodillas arriba", reps: 40, tipo: "tiempo", guia: "Ritmo alto pero seguro." }
+  ]
+};
 
-  <video id="video" playsinline muted></video>
-  <canvas id="canvas"></canvas>
+// Inicializa rutina
+function iniciarRutina(nivel = "principiante") {
+  nivelActual = nivel;
+  rutina = rutinas[nivelActual];
+  indiceEjercicio = 0;
+  caloriasQuemadas = 0;
+  prepararEjercicio();
+}
 
-  <div class="ui">
-    <button id="btn-camera">🔄 Cámara</button>
-    <button id="btn-ghost">👻 Ghost</button>
-    <button id="btn-color">🌈 Color</button>
-    <button id="btn-snap">📸 Foto</button>
-  </div>
+function prepararEjercicio() {
+  const ejercicio = rutina[indiceEjercicio];
+  repeticionesRestantes = ejercicio.reps;
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  statusEl.innerText = `Ejercicio: ${ejercicio.nombre} — Faltan: ${repeticionesRestantes}`;
+  msgEl.innerText = ejercicio.guia;
+  countEl.innerText = repeticionesRestantes;
+}
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusEl = document.getElementById('status');
-    
-    let poseDetector;
-    let isGhost = false;
-    let currentFacing = 'user';
-    let skeletonColor = "#00f2ff";
-    let count = 0;
-    let stage = "up";
-    let vFillHeight = 0;
-    let particles = [];
+function completarRepeticion() {
+  repeticionesRestantes--;
+  caloriasQuemadas += 0.4;
 
-    const CONNECTIONS = [
-      [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], 
-      [11,12], [11,13], [13,15], [12,14], [14,16], 
-      [11,23], [12,24], [23,24], 
-      [23,25], [25,27], [24,26], [26,28]
-    ];
+  countEl.innerText = repeticionesRestantes;
 
-    // Función para calcular ángulos entre 3 puntos
-    function calculateAngle(a, b, c) {
-      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-      let angle = Math.abs(radians * 180.0 / Math.PI);
-      if (angle > 180.0) angle = 360 - angle;
-      return Math.round(angle);
-    }
+  if (repeticionesRestantes <= 0) {
+    siguienteEjercicio();
+  }
+}
 
-    async function init() {
-      poseDetector = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-      });
-      poseDetector.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-      poseDetector.onResults(onResults);
-      await setupCamera();
-      
-      const frameLoop = async () => {
-        if (video.readyState >= 2) await poseDetector.send({ image: video });
-        requestAnimationFrame(frameLoop);
-      };
-      frameLoop();
-    }
+function siguienteEjercicio() {
+  indiceEjercicio++;
+  if (indiceEjercicio >= rutina.length) {
+    finalizarRutina();
+  } else {
+    prepararEjercicio();
+  }
+}
 
-    async function setupCamera() {
-      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacing, width: 640, height: 480 }
-      });
-      video.srcObject = stream;
-      video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-      
-      return new Promise(res => {
-        video.onloadedmetadata = () => {
-          video.play();
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          res();
-        };
-      });
-    }
+function finalizarRutina() {
+  statusEl.innerText = `Rutina completada — Calorías estimadas: ${caloriasQuemadas.toFixed(1)}`;
+  msgEl.innerText = "¡Buen trabajo! Puedes iniciar otra rutina.";
+}
 
-    function handleParticles() {
-      for (let i = 0; i < particles.length; i++) {
-        let p = particles[i];
-        ctx.fillStyle = `rgba(${p.rgb}, ${p.alpha})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-        p.y -= 1.5; 
-        p.alpha -= 0.03;
-        if (p.alpha <= 0) particles.splice(i, 1);
-      }
-    }
+/* ===============================
+   CONFIGURACIÓN DE MEDIAPIPE
+================================*/
+const CONNECTIONS = [
+  [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], 
+  [11,12], [11,13], [13,15], [12,14], [14,16], 
+  [11,23], [12,24], [23,24], 
+  [23,25], [25,27], [24,26], [26,28]
+];
 
-    function onResults(results) {
-      ctx.save();
-      
-      if (isGhost) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
+function calculateAngle(a, b, c) {
+  const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+  let angle = Math.abs(radians * 180.0 / Math.PI);
+  if (angle > 180.0) angle = 360 - angle;
+  return Math.round(angle);
+}
 
-      if (currentFacing === 'user') {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-      }
+async function init() {
+  poseDetector = new Pose({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+  });
 
-      if (results.poseLandmarks) {
-        const landmarks = results.poseLandmarks;
-        
-        // 1. Fitness (Sentadillas)
-        const hip = landmarks[24];
-        const knee = landmarks[26];
-        if (hip.visibility > 0.5 && knee.visibility > 0.5) {
-          if (hip.y > knee.y - 0.05) stage = "down";
-          if (hip.y < knee.y - 0.15 && stage === "down") {
-            stage = "up";
-            count++;
-            document.getElementById('count-val').innerText = count;
-          }
-        }
+  poseDetector.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5
+  });
 
-        // 2. Botón Virtual (Reiniciar)
-        const handL = landmarks[15]; 
-        if (handL.visibility > 0.5) {
-          if (handL.x > 0.8 && handL.y > 0.4 && handL.y < 0.6) {
-            vFillHeight = Math.min(100, vFillHeight + 4);
-            if (vFillHeight >= 100) { count = 0; document.getElementById('count-val').innerText = 0; vFillHeight = 0; }
-          } else {
-            vFillHeight = Math.max(0, vFillHeight - 5);
-          }
-          document.getElementById('v-fill').style.height = vFillHeight + "%";
-        }
+  poseDetector.onResults(onResults);
+  await setupCamera();
 
-        // 3. Sistema de Partículas en Manos
-        [landmarks[15], landmarks[16]].forEach(hand => {
-          if (hand.visibility > 0.7) {
-            particles.push({
-              x: hand.x * canvas.width,
-              y: hand.y * canvas.height,
-              size: Math.random() * 4 + 1,
-              alpha: 1,
-              rgb: skeletonColor === "#00f2ff" ? "0, 242, 255" : "255, 255, 255"
-            });
-          }
-        });
+  const frameLoop = async () => {
+    if (video.readyState >= 2) await poseDetector.send({ image: video });
+    requestAnimationFrame(frameLoop);
+  };
+  frameLoop();
 
-        drawSkeleton(landmarks);
-        handleParticles();
+  iniciarRutina("principiante"); // Nivel por defecto
+}
 
-        // 4. Dibujar Ángulos (Codos)
-        const leftElbowAngle = calculateAngle(landmarks[11], landmarks[13], landmarks[15]);
-        const rightElbowAngle = calculateAngle(landmarks[12], landmarks[14], landmarks[16]);
-        
-        ctx.fillStyle = "white";
-        ctx.font = "bold 12px Arial";
-        ctx.fillText(leftElbowAngle + "°", landmarks[13].x * canvas.width + 10, landmarks[13].y * canvas.height);
-        ctx.fillText(rightElbowAngle + "°", landmarks[14].x * canvas.width - 30, landmarks[14].y * canvas.height);
-      }
-      ctx.restore();
-    }
+/* ===============================
+   CÁMARA
+================================*/
+async function setupCamera() {
+  if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
 
-    function drawSkeleton(landmarks) {
-      ctx.strokeStyle = skeletonColor;
-      ctx.lineWidth = 5;
-      ctx.lineCap = "round";
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = skeletonColor;
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: currentFacing, width: 640, height: 480 }
+  });
 
-      CONNECTIONS.forEach(([a, b]) => {
-        const p1 = landmarks[a];
-        const p2 = landmarks[b];
-        if (p1.visibility > 0.5 && p2.visibility > 0.5) {
-          ctx.beginPath();
-          ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
-          ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
-          ctx.stroke();
-        }
-      });
-    }
+  video.srcObject = stream;
+  video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
 
-    document.getElementById('btn-camera').onclick = async () => {
-      currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
-      await setupCamera();
+  return new Promise(res => {
+    video.onloadedmetadata = () => {
+      video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      res();
     };
-    document.getElementById('btn-ghost').onclick = () => isGhost = !isGhost;
-    document.getElementById('btn-color').onclick = () => {
-      const colors = ["#00f2ff", "#ff00ff", "#00ff00", "#ffff00", "#ffffff"];
-      skeletonColor = colors[Math.floor(Math.random() * colors.length)];
-    };
-    document.getElementById('btn-snap').onclick = () => {
-      const link = document.createElement('a');
-      link.download = 'kinect-bio.png';
-      link.href = canvas.toDataURL();
-      link.click();
-    };
+  });
+}
 
-    init();
-  </script>
-</body>
-</html>
+/* ===============================
+   SISTEMA DE PARTÍCULAS
+================================*/
+function handleParticles() {
+  for (let i = 0; i < particles.length; i++) {
+    let p = particles[i];
+    ctx.fillStyle = `rgba(${p.rgb}, ${p.alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    p.y -= 1.5; 
+    p.alpha -= 0.03;
+    if (p.alpha <= 0) particles.splice(i, 1);
+  }
+}
+
+/* ===============================
+   DETECCIÓN DE MOVIMIENTOS
+================================*/
+function onResults(results) {
+  ctx.save();
+
+  if (isGhost) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  if (currentFacing === 'user') {
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+  }
+
+  if (!results.poseLandmarks) {
+    msgEl.innerText = "Mantente dentro de la cámara";
+    return ctx.restore();
+  }
+
+  const landmarks = results.poseLandmarks;
+
+  /* ===============================
+     DETECCIÓN DE SENTADILLAS
+  =================================*/
+  const ejercicioActual = rutina[indiceEjercicio];
+
+  if (ejercicioActual.nombre === "Sentadillas") {
+    const hip = landmarks[24];
+    const knee = landmarks[26];
+
+    if (hip.visibility > 0.5 && knee.visibility > 0.5) {
+      if (hip.y > knee.y - 0.05) stage = "down";
+
+      if (hip.y < knee.y - 0.15 && stage === "down") {
+        stage = "up";
+        completarRepeticion();
+      }
+    }
+  }
+
+  /* ===============================
+     PARTÍCULAS DE MANOS
+  =================================*/
+  [landmarks[15], landmarks[16]].forEach(hand => {
+    if (hand.visibility > 0.7) {
+      particles.push({
+        x: hand.x * canvas.width,
+        y: hand.y * canvas.height,
+        size: Math.random() * 4 + 1,
+        alpha: 1,
+        rgb: skeletonColor === "#00f2ff" ? "0, 242, 255" : "255, 255, 255"
+      });
+    }
+  });
+
+  drawSkeleton(landmarks);
+  handleParticles();
+  ctx.restore();
+}
+
+/* ===============================
+   DIBUJO DEL ESQUELETO
+================================*/
+function drawSkeleton(landmarks) {
+  ctx.strokeStyle = skeletonColor;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = skeletonColor;
+
+  CONNECTIONS.forEach(([a, b]) => {
+    const p1 = landmarks[a];
+    const p2 = landmarks[b];
+    if (p1.visibility > 0.5 && p2.visibility > 0.5) {
+      ctx.beginPath();
+      ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+      ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+      ctx.stroke();
+    }
+  });
+}
+
+/* ===============================
+   BOTONES
+================================*/
+document.getElementById('btn-camera').onclick = async () => {
+  currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
+  await setupCamera();
+};
+
+document.getElementById('btn-ghost').onclick = () => isGhost = !isGhost;
+
+document.getElementById('btn-color').onclick = () => {
+  const colors = ["#00f2ff", "#ff00ff", "#00ff00", "#ffff00", "#ffffff"];
+  skeletonColor = colors[Math.floor(Math.random() * colors.length)];
+};
+
+document.getElementById('btn-snap').onclick = () => {
+  const link = document.createElement('a');
+  link.download = 'kinect-bio.png';
+  link.href = canvas.toDataURL();
+  link.click();
+};
+
+/* ===============================
+   INICIO PRINCIPAL
+================================*/
+init();
+</script>
