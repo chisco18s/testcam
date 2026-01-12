@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Kinect Pro Ultra — Fixed Mirroring</title>
+  <title>Kinect Pro Ultra — Bio-Feedback & VFX</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; color: white; font-family: sans-serif; overflow: hidden; }
@@ -11,7 +11,6 @@
     #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     #canvas { position: absolute; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
     
-    /* UI */
     .ui { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; flex-wrap: wrap; }
     button {
       background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
@@ -32,7 +31,6 @@
       border-left: 5px solid #00f2ff;
     }
 
-    /* Botón Virtual (Ajustado para que coincida con la vista espejo) */
     #v-button {
       position: absolute; top: 50%; left: 30px; transform: translateY(-50%);
       width: 100px; height: 100px; border: 3px solid rgba(0,242,255,0.4);
@@ -47,7 +45,8 @@
 </head>
 <body>
 
-  <div class="status" id="status">SINCRONIZANDO ESPEJO...</div>
+  <div class="status" id="status">MODO BIOMÉTRICO ACTIVO</div>
+  
   <div id="stats">
     <span style="color:#00f2ff; font-size:12px;">SENTADILLAS</span><br>
     <span id="count-val" style="font-size:30px;">0</span>
@@ -84,6 +83,7 @@
     let count = 0;
     let stage = "up";
     let vFillHeight = 0;
+    let particles = [];
 
     const CONNECTIONS = [
       [0,1], [1,2], [2,3], [0,4], [4,5], [5,6], 
@@ -91,6 +91,14 @@
       [11,23], [12,24], [23,24], 
       [23,25], [25,27], [24,26], [26,28]
     ];
+
+    // Función para calcular ángulos entre 3 puntos
+    function calculateAngle(a, b, c) {
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs(radians * 180.0 / Math.PI);
+      if (angle > 180.0) angle = 360 - angle;
+      return Math.round(angle);
+    }
 
     async function init() {
       poseDetector = new Pose({
@@ -113,7 +121,6 @@
         video: { facingMode: currentFacing, width: 640, height: 480 }
       });
       video.srcObject = stream;
-      // Espejamos el video físicamente si es cámara frontal
       video.style.transform = currentFacing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
       
       return new Promise(res => {
@@ -126,10 +133,22 @@
       });
     }
 
+    function handleParticles() {
+      for (let i = 0; i < particles.length; i++) {
+        let p = particles[i];
+        ctx.fillStyle = `rgba(${p.rgb}, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        p.y -= 1.5; 
+        p.alpha -= 0.03;
+        if (p.alpha <= 0) particles.splice(i, 1);
+      }
+    }
+
     function onResults(results) {
       ctx.save();
       
-      // Limpieza de pantalla
       if (isGhost) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -137,8 +156,6 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      // CORRECCIÓN DE ESPEJO: 
-      // Si la cámara es frontal, invertimos el dibujo del canvas para que coincida con el video espejado
       if (currentFacing === 'user') {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
@@ -159,12 +176,10 @@
           }
         }
 
-        // 2. Botón Virtual (Mano Izquierda - Landmark 15)
-        // Como el canvas está invertido, detectamos la colisión con las coordenadas reales
-        const hand = landmarks[15]; 
-        if (hand.visibility > 0.5) {
-          // El botón está a la izquierda de la pantalla (x > 0.8 en coordenadas de MediaPipe invertidas)
-          if (hand.x > 0.8 && hand.y > 0.4 && hand.y < 0.6) {
+        // 2. Botón Virtual (Reiniciar)
+        const handL = landmarks[15]; 
+        if (handL.visibility > 0.5) {
+          if (handL.x > 0.8 && handL.y > 0.4 && handL.y < 0.6) {
             vFillHeight = Math.min(100, vFillHeight + 4);
             if (vFillHeight >= 100) { count = 0; document.getElementById('count-val').innerText = 0; vFillHeight = 0; }
           } else {
@@ -173,7 +188,30 @@
           document.getElementById('v-fill').style.height = vFillHeight + "%";
         }
 
+        // 3. Sistema de Partículas en Manos
+        [landmarks[15], landmarks[16]].forEach(hand => {
+          if (hand.visibility > 0.7) {
+            particles.push({
+              x: hand.x * canvas.width,
+              y: hand.y * canvas.height,
+              size: Math.random() * 4 + 1,
+              alpha: 1,
+              rgb: skeletonColor === "#00f2ff" ? "0, 242, 255" : "255, 255, 255"
+            });
+          }
+        });
+
         drawSkeleton(landmarks);
+        handleParticles();
+
+        // 4. Dibujar Ángulos (Codos)
+        const leftElbowAngle = calculateAngle(landmarks[11], landmarks[13], landmarks[15]);
+        const rightElbowAngle = calculateAngle(landmarks[12], landmarks[14], landmarks[16]);
+        
+        ctx.fillStyle = "white";
+        ctx.font = "bold 12px Arial";
+        ctx.fillText(leftElbowAngle + "°", landmarks[13].x * canvas.width + 10, landmarks[13].y * canvas.height);
+        ctx.fillText(rightElbowAngle + "°", landmarks[14].x * canvas.width - 30, landmarks[14].y * canvas.height);
       }
       ctx.restore();
     }
@@ -182,7 +220,7 @@
       ctx.strokeStyle = skeletonColor;
       ctx.lineWidth = 5;
       ctx.lineCap = "round";
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 12;
       ctx.shadowColor = skeletonColor;
 
       CONNECTIONS.forEach(([a, b]) => {
@@ -197,19 +235,18 @@
       });
     }
 
-    // Botones
     document.getElementById('btn-camera').onclick = async () => {
       currentFacing = (currentFacing === 'user') ? 'environment' : 'user';
       await setupCamera();
     };
     document.getElementById('btn-ghost').onclick = () => isGhost = !isGhost;
     document.getElementById('btn-color').onclick = () => {
-      const colors = ["#00f2ff", "#ff00ff", "#00ff00", "#ffff00"];
+      const colors = ["#00f2ff", "#ff00ff", "#00ff00", "#ffff00", "#ffffff"];
       skeletonColor = colors[Math.floor(Math.random() * colors.length)];
     };
     document.getElementById('btn-snap').onclick = () => {
       const link = document.createElement('a');
-      link.download = 'kinect-snap.png';
+      link.download = 'kinect-bio.png';
       link.href = canvas.toDataURL();
       link.click();
     };
@@ -218,4 +255,3 @@
   </script>
 </body>
 </html>
-
