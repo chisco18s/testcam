@@ -3,74 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Spectral AI - Alert System</title>
+    <title>SPECTRAL AI - ADVANCED SCANNER</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
-        :root { --main: #00ff41; --danger: #ff0000; --warn: #ffcc00; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-        body { background: #000; color: var(--main); overflow: hidden; width: 100vw; height: 100vh; }
+        :root { 
+            --main: #00ff41; 
+            --danger: #ff3e3e; 
+            --warn: #ffcc00; 
+            --glass: rgba(0, 20, 0, 0.85);
+        }
 
-        /* Filtros */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', 'Courier New', monospace; }
+        
+        body { 
+            background: #000; 
+            color: var(--main); 
+            overflow: hidden; 
+            width: 100vw; 
+            height: 100vh;
+            user-select: none;
+        }
+
+        /* Capas de Video y Filtros */
         #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        .filter-normal { filter: brightness(0.5) contrast(1.2); }
-        .filter-night { filter: brightness(2) sepia(100%) hue-rotate(80deg) saturate(5); }
-        .filter-thermal { filter: brightness(0.8) contrast(3) hue-rotate(240deg) saturate(6); }
-        .filter-spectro { filter: invert(1) hue-rotate(180deg); }
+        .filter-normal { filter: brightness(0.6) contrast(1.1); }
+        .filter-night { filter: brightness(1.8) sepia(100%) hue-rotate(70deg) saturate(4); }
+        .filter-thermal { filter: brightness(0.9) contrast(2.5) hue-rotate(240deg) saturate(5); }
+        .filter-spectro { filter: invert(1) hue-rotate(180deg) contrast(1.5); }
 
         #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
-        /* HUD Superior */
-        #hud-top { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-around; z-index: 20; padding: 45px 10px 15px; background: rgba(0,0,0,0.8); border-bottom: 1px solid var(--main); }
-        .value { font-size: 1.2rem; font-weight: bold; color: #fff; }
+        /* Marco de Escaneo */
+        .scan-line {
+            position: absolute; width: 100%; height: 2px; background: rgba(0, 255, 65, 0.2);
+            top: 0; z-index: 15; animation: scan 4s linear infinite;
+        }
+        @keyframes scan { from { top: 0; } to { top: 100%; } }
 
-        /* Botonera */
-        #ui-layer { position: absolute; top: 110px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 30; }
-        .btn-group { display: flex; gap: 5px; }
-        .btn { background: rgba(0,20,0,0.9); border: 1px solid var(--main); color: var(--main); padding: 8px 12px; font-size: 10px; border-radius: 4px; font-weight: bold; }
-        .btn.active { background: var(--main); color: #000; }
-        .btn-capture { background: var(--danger); color: white; border: none; padding: 10px 20px; font-size: 12px; border-radius: 5px; margin-top: 5px; box-shadow: 0 0 10px var(--danger); }
+        /* HUD Superior Profesional */
+        #hud-top { 
+            position: absolute; top: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr;
+            z-index: 20; padding: 50px 15px 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .stat-box { text-align: center; }
+        .label { font-size: 9px; opacity: 0.8; margin-bottom: 2px; }
+        .value { font-size: 14px; font-weight: 800; }
+
+        /* Botonera Lateral Inferior */
+        #ui-layer { 
+            position: absolute; bottom: 100px; right: 15px; 
+            display: flex; flex-direction: column; gap: 10px; z-index: 30; 
+        }
+        .btn { 
+            background: var(--glass); border: 1px solid var(--main); color: var(--main); 
+            padding: 10px; font-size: 10px; border-radius: 2px; font-weight: bold;
+            backdrop-filter: blur(5px); transition: 0.3s;
+        }
+        .btn.active { background: var(--main); color: #000; box-shadow: 0 0 15px var(--main); }
 
         /* Consola de Alertas */
-        #registry { position: absolute; bottom: 130px; left: 15px; right: 15px; height: 100px; background: rgba(255,0,0,0.05); border-left: 4px solid var(--danger); padding: 10px; z-index: 25; overflow: hidden; display: flex; flex-direction: column-reverse; font-size: 11px; border-top: 1px solid rgba(255,0,0,0.2); }
-        .log-alert { color: var(--danger); font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+        #registry { 
+            position: absolute; bottom: 100px; left: 15px; width: 60%;
+            height: 80px; background: rgba(0,0,0,0.5); border-left: 2px solid var(--main); 
+            padding: 8px; z-index: 25; overflow: hidden; font-size: 9px;
+            display: flex; flex-direction: column-reverse;
+        }
+        .log-entry { margin-bottom: 3px; border-bottom: 1px solid rgba(0,255,65,0.1); padding-bottom: 2px; }
 
-        .entity-tag { position: absolute; color: white; font-weight: bold; padding: 4px 10px; border: 2px solid var(--danger); background: rgba(0,0,0,0.8); z-index: 40; font-size: 12px; transform: translate(-50%, -100%); pointer-events: none; }
+        /* Etiqueta de Entidad */
+        .entity-tag { 
+            position: absolute; color: #fff; padding: 5px 12px; 
+            border: 1px solid var(--danger); background: rgba(255, 0, 0, 0.2); 
+            backdrop-filter: blur(5px); z-index: 40; font-size: 11px; font-weight: bold;
+            pointer-events: none; border-radius: 3px; text-shadow: 0 0 5px #000;
+        }
 
-        .bottom-ui { position: fixed; bottom: 0; width: 100%; height: 90px; background: #000; z-index: 50; display: flex; justify-content: space-between; align-items: center; padding: 0 20px 20px; border-top: 1px solid var(--main); }
-        #start-screen { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .bottom-ui { 
+            position: fixed; bottom: 0; width: 100%; height: 70px; 
+            background: #000; z-index: 50; display: flex; justify-content: space-between; 
+            align-items: center; padding: 0 20px; border-top: 1px solid var(--main);
+        }
+
+        #start-screen { 
+            position: fixed; inset: 0; background: #000; z-index: 100; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+        }
+        
+        .capture-btn {
+            width: 60px; height: 60px; background: var(--danger); border: 4px solid #fff;
+            border-radius: 50%; box-shadow: 0 0 20px var(--danger);
+        }
     </style>
 </head>
 <body>
 
 <div id="start-screen">
-    <h1 style="color:var(--danger); letter-spacing: 5px; margin-bottom: 30px;">SPECTRAL AI v5.0</h1>
-    <button onclick="init()" class="btn" style="font-size: 1.5rem; padding: 20px 40px;">INICIAR ESCÁNER</button>
+    <div style="border: 1px solid var(--main); padding: 40px; text-align: center;">
+        <h2 style="letter-spacing: 8px; margin-bottom: 20px;">SPECTRAL AI</h2>
+        <p style="font-size: 10px; margin-bottom: 30px; opacity: 0.6;">SISTEMA DE ANÁLISIS BIO-ESPECTRAL V6.0</p>
+        <button onclick="init()" class="btn" style="padding: 15px 30px;">AUTORIZAR ACCESO</button>
+    </div>
 </div>
 
+<div class="scan-line"></div>
 <video id="video" class="filter-normal" playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-    <div style="text-align:center"><small>EMF LEVEL</small><div id="emf" class="value">0.00</div></div>
-    <div style="text-align:center"><small>ALERTA</small><div id="threat" class="value" style="color:var(--main)">IDLE</div></div>
+    <div class="stat-box"><div class="label">SENS. PROXIMITY</div><div id="emf" class="value">0.00</div></div>
+    <div class="stat-box"><div class="label">STATUS</div><div id="threat" class="value">SCANNING</div></div>
+    <div class="stat-box"><div class="label">LATENCY</div><div class="value">24ms</div></div>
 </div>
 
 <div id="ui-layer">
-    <div class="btn-group">
-        <button class="btn active" onclick="setFilter('normal', this)">NORMAL</button>
-        <button class="btn" onclick="setFilter('night', this)">NIGHT V.</button>
-        <button class="btn" onclick="setFilter('thermal', this)">THERMAL</button>
-        <button class="btn" onclick="setFilter('spectro', this)">SPECTRO</button>
-    </div>
-    <button class="btn-capture" onclick="takePhoto()">📷 CAPTURAR EVIDENCIA</button>
+    <button class="btn active" onclick="setFilter('normal', this)">STD</button>
+    <button class="btn" onclick="setFilter('night', this)">NVD</button>
+    <button class="btn" onclick="setFilter('thermal', this)">THR</button>
+    <button class="btn" onclick="setFilter('spectro', this)">SPC</button>
 </div>
 
 <div id="registry"></div>
 <div id="entity-tag" class="entity-tag" style="display:none"></div>
 
 <div class="bottom-ui">
-    <div style="font-size: 10px;">DB-CONNECTED: <span style="color:var(--main)">TRUE</span><br>SENSORS: ACTIVE</div>
-    <div style="text-align:right"><small>TIMESTAMP</small><br><span id="clock" style="font-size: 18px; color:#fff">00:00:00</span></div>
+    <div style="font-size: 9px; opacity: 0.7;">CORE: ACTIVE<br>SENSORS: 100%</div>
+    <button class="capture-btn" onclick="takePhoto()"></button>
+    <div style="text-align:right"><div class="label">SYSTEM TIME</div><div id="clock" style="font-size: 14px; color:#fff">00:00:00</div></div>
 </div>
 
 <script>
@@ -79,35 +139,31 @@
     const ctx = canvas.getContext('2d');
     const registry = document.getElementById('registry');
     const tag = document.getElementById('entity-tag');
-    
-    // Nombres reales de fenómenos y entidades
-    const REAL_ENTITIES = [
-        { n: "POLTERGEIST", d: "Actividad cinética detectada." },
-        { n: "PAIMON", d: "Entidad de clase real. Alta peligrosidad." },
-        { n: "THE HAT MAN", d: "Fenómeno de sombra residual documentado." },
-        { n: "ZOZO", d: "Señal parásita de baja frecuencia." },
-        { n: "VALAK", d: "Anomalía espectral de nivel 5." },
-        { n: "BANSHEE", d: "Captación de lamento sónico inaudible." }
-    ];
-
-    let currentEntity = null;
     let audioCtx = null;
+    let currentEntityName = "";
+
+    // GENERADOR DE NOMBRES ALEATORIOS PROFESIONALES
+    function generatePhenomenon() {
+        const prefix = ["ANOMALÍA", "ENTIDAD", "MANIFESTACIÓN", "RESIDUO", "VÓRTICE", "PRESENCIA"];
+        const nature = ["ELECTROMAGNÉTICA", "TÉRMICA", "ECTOPLÁSMICA", "SÓNICA", "RADIACTIVA", "DIMENSIONAL"];
+        const level = ["CLASE-I", "CLASE-V", "TIPO-B", "ALPHA", "OMEGA", "NO-IDENTIFICADO"];
+        
+        return `${prefix[Math.floor(Math.random()*prefix.length)]} ${nature[Math.floor(Math.random()*nature.length)]} [${level[Math.floor(Math.random()*level.length)]}]`;
+    }
 
     function setFilter(type, btn) {
         video.className = 'filter-' + type;
         document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        playAlert(150, 0.1); // Sonido de clic
+        beep(100, 0.05);
     }
 
-    // Sistema de sonido de alertas (Beeps)
-    function playAlert(freq, dur) {
+    function beep(freq, dur) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = 'square';
         osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
@@ -116,14 +172,17 @@
 
     async function init() {
         document.getElementById('start-screen').style.display = 'none';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", focusMode: "continuous" } 
+        });
         video.srcObject = stream;
         video.play();
+        
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
+        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.6 });
         pose.onResults(onResults);
 
         const frame = async () => {
@@ -136,78 +195,76 @@
 
     function onResults(res) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const threatEl = document.getElementById('threat');
+
         if (res.poseLandmarks) {
-            if (!currentEntity) {
-                currentEntity = REAL_ENTITIES[Math.floor(Math.random()*REAL_ENTITIES.length)];
-                addLog(currentEntity);
-                playAlert(880, 0.2); // Alerta de detección
+            if (!currentEntityName) {
+                currentEntityName = generatePhenomenon();
+                addLog(currentEntityName);
+                beep(800, 0.2);
             }
             drawGhost(res.poseLandmarks);
             updateHUD(true);
         } else {
-            currentEntity = null;
+            currentEntityName = "";
             tag.style.display = 'none';
             updateHUD(false);
         }
     }
 
     function drawGhost(lm) {
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
+        ctx.strokeStyle = "rgba(0, 255, 65, 0.5)";
+        ctx.lineWidth = 1;
+        
         const head = lm[0];
         tag.style.display = 'block';
         tag.style.left = (head.x * canvas.width) + 'px';
-        tag.style.top = (head.y * canvas.height - 30) + 'px';
-        tag.innerText = "DETECTED: " + currentEntity.n;
-        
+        tag.style.top = (head.y * canvas.height - 40) + 'px';
+        tag.innerText = currentEntityName;
+
+        // Dibujo de esqueleto estilo "Wireframe" profesional
+        ctx.beginPath();
         lm.forEach((p, i) => {
             const x = p.x * canvas.width;
             const y = p.y * canvas.height;
-            if (i === 0) ctx.moveTo(x, y);
-            ctx.lineTo(x + (Math.random()*4-2), y + (Math.random()*4-2));
-            ctx.fillStyle = "white";
-            ctx.fillRect(x-1, y-1, 2, 2);
+            ctx.lineTo(x, y);
+            ctx.fillStyle = "rgba(0, 255, 65, 0.8)";
+            ctx.fillRect(x-2, y-2, 4, 4);
         });
         ctx.stroke();
     }
 
-    function addLog(e) {
+    function addLog(name) {
         const item = document.createElement('div');
-        item.className = 'log-alert';
-        item.innerHTML = `[ALERTA] PRESENCIA DE ${e.n}: ${e.d}`;
+        item.className = 'log-entry';
+        item.innerHTML = `<span style="color:var(--danger)">[DETECTADO]</span> ${name}`;
         registry.prepend(item);
-        if (registry.children.length > 4) registry.lastChild.remove();
+        if (registry.children.length > 5) registry.lastChild.remove();
     }
 
     function updateHUD(det) {
-        const emf = det ? (5 + Math.random()*20).toFixed(2) : (Math.random()*0.4).toFixed(2);
-        document.getElementById('emf').innerText = emf;
+        const emf = det ? (12.4 + Math.random()*40).toFixed(2) : (Math.random()*0.8).toFixed(2);
+        document.getElementById('emf').innerText = emf + " μT";
         const threat = document.getElementById('threat');
-        threat.innerText = det ? "AMENAZA DETECTADA" : "BÚSQUEDA...";
+        threat.innerText = det ? "⚠️ WARNING" : "SCANNING";
         threat.style.color = det ? "var(--danger)" : "var(--main)";
-        if(det && Math.random() > 0.9) playAlert(440, 0.05); // Pulso de sonar
     }
 
     function takePhoto() {
-        // Crear un canvas temporal para combinar video y filtros
         const captureCanvas = document.createElement('canvas');
         captureCanvas.width = canvas.width;
         captureCanvas.height = canvas.height;
         const cCtx = captureCanvas.getContext('2d');
-        
-        // Aplicar el filtro actual al contexto de captura
         cCtx.filter = getComputedStyle(video).filter;
         cCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
         cCtx.filter = 'none';
-        cCtx.drawImage(canvas, 0, 0); // Dibujar el esqueleto y etiquetas
+        cCtx.drawImage(canvas, 0, 0);
         
-        // Descargar la imagen
         const link = document.createElement('a');
-        link.download = `EVIDENCIA_${new Date().getTime()}.png`;
+        link.download = `EV_${Date.now()}.png`;
         link.href = captureCanvas.toDataURL();
         link.click();
-        playAlert(1200, 0.1); // Sonido de obturador
+        beep(1200, 0.1);
     }
 </script>
 </body>
