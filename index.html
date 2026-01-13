@@ -3,19 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>SPECTRAL AI v9 - VOLUMETRIC</title>
+    <title>SPECTRAL AI v10 - ANATOMY SCAN</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
-        :root { --main: #00ff41; --danger: #ff0000; --ui-color: var(--main); }
+        :root { 
+            --main: #00ff41; 
+            --danger: #ff0000; 
+            --ui-color: var(--main); 
+            --fill-color: rgba(255, 0, 0, 0.2); /* Color de relleno de la malla */
+            --outline-color: rgba(255, 255, 255, 0.8); /* Color del contorno */
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
         body { background: #000; color: var(--ui-color); overflow: hidden; width: 100vw; height: 100vh; transition: 0.3s; }
 
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.6; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; opacity: 0.5; }
         #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
         /* HUD Superior */
         #hud-top { 
-            position: absolute; top: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr;
+            position: absolute; top: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr;
             z-index: 20; padding: 50px 15px 15px; background: rgba(0,0,0,0.8);
             border-bottom: 1px solid var(--ui-color);
         }
@@ -26,7 +33,24 @@
         .entity-tag { 
             position: absolute; color: #fff; padding: 5px 12px; border: 1px solid #fff;
             background: var(--danger); z-index: 40; font-size: 11px; font-weight: bold;
-            pointer-events: none; box-shadow: 0 0 20px rgba(255,0,0,0.5);
+            pointer-events: none; box-shadow: 0 0 15px rgba(255,0,0,0.5);
+            text-transform: uppercase;
+        }
+        .part-tag {
+            position: absolute; color: white; background: rgba(0,0,0,0.5);
+            font-size: 8px; padding: 2px 5px; border-left: 1px solid var(--ui-color);
+            pointer-events: none; opacity: 0.8;
+            transform: translate(-50%, -100%); /* Centrar la etiqueta sobre el punto */
+        }
+
+        /* Barra de progreso de análisis */
+        #analysis-bar-container {
+            position: absolute; bottom: 85px; left: 15px; width: calc(100% - 30px);
+            height: 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--ui-color);
+            z-index: 45; overflow: hidden;
+        }
+        #analysis-bar {
+            width: 0%; height: 100%; background: var(--ui-color); transition: width 0.1s linear;
         }
 
         .bottom-ui { 
@@ -42,24 +66,25 @@
 <body>
 
 <div id="start-screen">
-    <h1 style="color:var(--main); letter-spacing: 5px;">SPECTRAL AI v9</h1>
-    <p style="font-size: 10px; margin-bottom: 20px;">VOLUMETRIC ANALYSIS SYSTEM</p>
-    <button onclick="init()" style="background:none; border:1px solid var(--main); color:var(--main); padding:15px 30px;">INICIAR PROTOCOLO</button>
+    <h1 style="color:var(--main); letter-spacing: 5px;">SPECTRAL AI v10</h1>
+    <p style="font-size: 10px; margin-bottom: 20px;">ANATOMICAL / VOLUMETRIC SCANNER</p>
+    <button onclick="init()" style="background:none; border:1px solid var(--main); color:var(--main); padding:15px 30px;">INICIAR SISTEMA</button>
 </div>
 
 <video id="video" playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-    <div style="text-align:center"><span class="label">MAG_EMF</span><span id="emf" class="val">0.00</span></div>
-    <div style="text-align:center"><span class="label">VOLUMEN</span><span id="vol-type" class="val">SCAN...</span></div>
-    <div style="text-align:center"><span class="label">AUDIO_FRQ</span><span id="audio-lvl" class="val">0%</span></div>
+    <div style="text-align:center"><span class="label">EMF_LEVEL</span><span id="emf" class="val">0.00 μT</span></div>
+    <div style="text-align:center"><span class="label">ANOMALÍA</span><span id="vol-type" class="val">BUSCANDO...</span></div>
 </div>
 
 <div id="entity-tag" class="entity-tag" style="display:none"></div>
 
+<div id="analysis-bar-container"><div id="analysis-bar"></div></div>
+
 <div class="bottom-ui">
-    <div id="status-info" style="font-size: 8px;">MESH: SOLID<br>OBJ_ID: NONE</div>
+    <div id="status-info" style="font-size: 8px;">OBJ_ID: NONE<br>STATUS: OFFLINE</div>
     <button class="capture-btn" onclick="takePhoto()"></button>
     <div style="text-align:right"><span id="clock" style="font-size: 14px; color:#fff">00:00:00</span></div>
 </div>
@@ -69,15 +94,42 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const tag = document.getElementById('entity-tag');
-    let audioCtx, analyser, dataArray;
+    const analysisBar = document.getElementById('analysis-bar');
+    let audioCtx; // Removed analyser and dataArray as per request, can be re-added if EVP is desired.
     
     let activeEntity = null;
+    let analysisProgress = 0; // Para la barra de progreso
 
-    // Lógica de clasificación por tamaño
-    function classifySize(height) {
-        if (height > 0.7) return { cat: "COLOSO / CLASE-A", name: "ENTIDAD MAYOR" };
-        if (height > 0.4) return { cat: "HUMANOIDE / CLASE-B", name: "ESPECTRO ESTÁNDAR" };
-        return { cat: "INFANTE / RESIDUO", name: "MICRO-MANIFESTACIÓN" };
+    // Conexiones de MediaPipe Pose para un esqueleto más lógico
+    const connections = [
+        [0, 1], [0, 4], // Cabeza a hombros
+        [1, 2], [2, 3], // Brazo izquierdo
+        [4, 5], [5, 6], // Brazo derecho
+        [0, 7], [0, 8], // Cuello a caderas (simulado)
+        [7, 9], [9, 11], // Pierna izquierda
+        [8, 10], [10, 12], // Pierna derecha
+        // Puntos adicionales para torso
+        [1, 7], [4, 8], [7,8] 
+    ];
+
+    // Puntos clave para etiquetar partes del cuerpo
+    const bodyParts = {
+        'CABEZA': 0,
+        'HOMBRO (L)': 1,
+        'HOMBRO (R)': 4,
+        'TORSO': 7, // Usamos la cadera izquierda como referencia central del torso inferior
+        'CADERA (L)': 7,
+        'CADERA (R)': 8,
+        'RODILLA (L)': 9,
+        'RODILLA (R)': 10,
+        'PIE (L)': 11,
+        'PIE (R)': 12
+    };
+
+    function classifyEntity(height) {
+        if (height > 0.7) return { cat: "COLOSO [CLASE-A]", name: "ENTIDAD MAYOR", fill: "rgba(255,0,0,0.3)" };
+        if (height > 0.4) return { cat: "HUMANOIDE [CLASE-B]", name: "ESPECTRO ESTÁNDAR", fill: "rgba(255,0,0,0.2)" };
+        return { cat: "RESIDUO [CLASE-C]", name: "MICRO-MANIFESTACIÓN", fill: "rgba(255,0,0,0.1)" };
     }
 
     async function init() {
@@ -86,12 +138,8 @@
         video.srcObject = stream;
         video.play();
         
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaStreamSource(stream);
-        analyser = audioCtx.createAnalyser();
-        source.connect(analyser);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)(); // Solo para sonido, no para EVP
+        
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
@@ -104,93 +152,132 @@
             requestAnimationFrame(frame);
         };
         frame();
-        setInterval(() => { 
-            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
-            updateAudioData();
-        }, 100);
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+        setInterval(() => updateHUD(activeEntity !== null), 500); // Actualiza EMF incluso sin detección
     }
 
     function onResults(res) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (res.poseLandmarks) {
-            // Calcular tamaño (Y del pie - Y de la cabeza)
-            const height = Math.abs(res.poseLandmarks[32].y - res.poseLandmarks[0].y);
+            const height = Math.abs(res.poseLandmarks[32].y - res.poseLandmarks[0].y); // Asume punto 32 es el pie derecho, 0 es la cabeza
 
             if (!activeEntity) {
-                const data = classifySize(height);
+                const data = classifyEntity(height);
                 activeEntity = { 
                     ...data, 
-                    id: "SP-" + Math.floor(Math.random()*9999) 
+                    id: "OBJ-" + Math.floor(Math.random()*9999),
+                    analysisComplete: false 
                 };
                 document.body.style.setProperty('--ui-color', 'var(--danger)');
                 navigator.vibrate([100, 50, 100]);
+                analysisProgress = 0; // Reiniciar progreso al detectar nueva entidad
+            }
+            
+            drawMesh(res.poseLandmarks, activeEntity.fill);
+            document.getElementById('vol-type').innerText = activeEntity.cat;
+            document.getElementById('status-info').innerHTML = `OBJ_ID: ${activeEntity.id}<br>STATUS: ANALYZING`;
+            
+            // Lógica para la barra de progreso
+            if (!activeEntity.analysisComplete) {
+                analysisProgress += 2; // Aumentar progreso
+                if (analysisProgress >= 100) {
+                    analysisProgress = 100;
+                    activeEntity.analysisComplete = true;
+                    document.getElementById('status-info').innerHTML = `OBJ_ID: ${activeEntity.id}<br>STATUS: ANALYSIS COMPLETE`;
+                }
+                analysisBar.style.width = analysisProgress + '%';
             }
 
-            drawSolidMesh(res.poseLandmarks);
-            document.getElementById('vol-type').innerText = activeEntity.cat;
-            document.getElementById('status-info').innerHTML = `MESH: SOLID<br>OBJ_ID: ${activeEntity.id}`;
         } else {
             if (activeEntity) {
                 activeEntity = null;
                 document.body.style.setProperty('--ui-color', 'var(--main)');
                 tag.style.display = 'none';
-                document.getElementById('vol-type').innerText = "SCAN...";
+                document.getElementById('vol-type').innerText = "BUSCANDO...";
+                document.getElementById('status-info').innerHTML = `OBJ_ID: NONE<br>STATUS: OFFLINE`;
+                analysisProgress = 0;
+                analysisBar.style.width = '0%';
             }
         }
     }
 
-    function drawSolidMesh(lm) {
+    function drawMesh(lm, fillColor) {
         const head = lm[0];
         tag.style.display = 'block';
         tag.style.left = (head.x * canvas.width) + 'px';
         tag.style.top = (head.y * canvas.height - 50) + 'px';
-        tag.innerText = `[${activeEntity.name}]`;
+        tag.innerText = `${activeEntity.name} ${activeEntity.id}`;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar canvas antes de redibujar
 
         // DIBUJO DE RELLENO VOLUMÉTRICO
         ctx.beginPath();
-        ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; // Color del cuerpo detectado
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 1;
+        // Conectar los puntos para formar la silueta. Usaremos un subset para una forma más limpia.
+        // Ejemplo de puntos a conectar para una forma humana:
+        // Hombro izquierdo (1) -> Cabeza (0) -> Hombro derecho (4)
+        // -> Cadera derecha (8) -> Pie derecho (12) -> Cadera izquierda (7) -> Pie izquierdo (11) -> (Cerrar)
+        const pathPoints = [1, 0, 4, 8, 12, 11, 7];
+        pathPoints.forEach((idx, i) => {
+            if (lm[idx]) {
+                const x = lm[idx].x * canvas.width;
+                const y = lm[idx].y * canvas.height;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+        });
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill(); 
+        
+        // DIBUJO DE LÍNEAS DE ESQUELETO
+        ctx.strokeStyle = "var(--outline-color)";
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "white"; // Simular glow
 
-        // Crear una ruta que conecte los puntos exteriores para rellenar
-        lm.forEach((p, i) => {
-            const x = p.x * canvas.width;
-            const y = p.y * canvas.height;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-            
-            // Dibujar puntos de articulación
-            ctx.save();
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(x-1, y-1, 3, 3);
-            ctx.restore();
+        connections.forEach(pair => {
+            const p1 = lm[pair[0]];
+            const p2 = lm[pair[1]];
+            if (p1 && p2) {
+                ctx.beginPath();
+                ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+                ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+                ctx.stroke();
+            }
         });
 
-        ctx.closePath();
-        ctx.fill(); // Rellena la silueta
-        ctx.stroke(); // Dibuja el contorno
+        // DIBUJAR PUNTOS Y ETIQUETAS DE PARTES DEL CUERPO
+        for (const partName in bodyParts) {
+            const index = bodyParts[partName];
+            const p = lm[index];
+            if (p) {
+                const x = p.x * canvas.width;
+                const y = p.y * canvas.height;
+                
+                // Dibujar el punto
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                ctx.fill();
 
-        // Efecto de escaneo de líneas internas
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-        for(let i=0; i<lm.length; i+=2) {
-            ctx.moveTo(lm[i].x * canvas.width, lm[i].y * canvas.height);
-            if(lm[i+1]) ctx.lineTo(lm[i+1].x * canvas.width, lm[i+1].y * canvas.height);
+                // Dibujar la etiqueta
+                ctx.font = "8px 'Courier New', monospace";
+                ctx.fillStyle = "white";
+                ctx.fillText(partName, x + 5, y - 5);
+            }
         }
-        ctx.stroke();
+        ctx.shadowBlur = 0; // Resetear sombra
     }
 
-    function updateAudioData() {
-        if (!analyser) return;
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        document.getElementById('audio-lvl').innerText = Math.floor(avg) + "%";
-        document.getElementById('emf').innerText = (activeEntity ? 50 + avg : avg/2).toFixed(2);
+    function updateHUD(isDetecting) {
+        // Actualiza el EMF basado en si hay detección o no
+        const emf = isDetecting ? (50 + Math.random()*20).toFixed(2) : (Math.random()*1.0).toFixed(2);
+        document.getElementById('emf').innerText = emf + " μT";
     }
 
     function takePhoto() {
-        alert("GEOMETRÍA VOLUMÉTRICA ALMACENADA");
+        alert("ANÁLISIS ESPECTRAL CAPTURADO.");
     }
 </script>
 </body>
