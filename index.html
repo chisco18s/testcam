@@ -3,150 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>SPECTRAL AI - PRO</title>
+    <title>SPECTRAL AI v7 - EVP & SCAN</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
-        :root { --main: #00ff41; --danger: #ff3e3e; --glass: rgba(0, 15, 0, 0.85); }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
-        body { background: #000; color: var(--main); overflow: hidden; width: 100vw; height: 100vh; }
-
-        /* Efecto Glitch y Video */
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; transition: filter 0.3s; }
-        .glitch-active { animation: glitch-anim 0.2s infinite; filter: hue-rotate(90deg) contrast(2) !important; }
-        
-        @keyframes glitch-anim {
-            0% { transform: translate(0); }
-            20% { transform: translate(-5px, 5px); }
-            40% { transform: translate(-5px, -5px); }
-            60% { transform: translate(5px, 5px); }
-            80% { transform: translate(5px, -5px); }
-            100% { transform: translate(0); }
+        :root { 
+            --main: #00ff41; 
+            --danger: #ff0000; 
+            --ui-color: var(--main);
+            --glass: rgba(0, 10, 0, 0.85); 
         }
 
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { background: #000; color: var(--ui-color); overflow: hidden; width: 100vw; height: 100vh; transition: color 0.4s; }
+
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #canvas { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
 
-        /* HUD Profesional */
+        /* HUD Superior */
         #hud-top { 
-            position: absolute; top: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr;
-            z-index: 20; padding: 50px 20px 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
-            border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+            position: absolute; top: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr;
+            z-index: 20; padding: 50px 15px 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            border-bottom: 1px solid var(--ui-color);
         }
-        .stat { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-        .val { font-size: 16px; font-weight: bold; color: #fff; }
+        .val { font-size: 14px; font-weight: bold; display: block; }
+        .label { font-size: 8px; text-transform: uppercase; opacity: 0.7; }
 
-        /* Controles */
-        #ui-layer { position: absolute; bottom: 100px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 30; }
-        .btn { 
-            background: var(--glass); border: 1px solid var(--main); color: var(--main); 
-            padding: 12px; font-size: 10px; border-radius: 4px; backdrop-filter: blur(5px);
+        /* Consola EVP (Psicofonías) */
+        #evp-console {
+            position: absolute; top: 120px; left: 50%; transform: translateX(-50%);
+            width: 80%; text-align: center; z-index: 25;
+            background: rgba(0,0,0,0.5); padding: 5px; border: 1px dashed var(--ui-color);
         }
-        .btn.active { background: var(--main); color: #000; box-shadow: 0 0 15px var(--main); }
+        #evp-word { font-size: 18px; font-style: italic; color: #fff; text-shadow: 0 0 10px var(--ui-color); }
 
-        /* Registro de Alertas */
+        /* Registro Inferior */
         #registry { 
-            position: absolute; bottom: 100px; left: 20px; width: 60%;
-            height: 90px; background: rgba(0,0,0,0.4); border-left: 3px solid var(--danger); 
-            padding: 10px; z-index: 25; overflow: hidden; font-size: 10px;
+            position: absolute; bottom: 100px; left: 15px; width: 60%; height: 80px;
+            background: rgba(0,0,0,0.6); border-left: 3px solid var(--ui-color); 
+            padding: 8px; z-index: 25; font-size: 9px; overflow: hidden;
             display: flex; flex-direction: column-reverse;
         }
 
-        /* Etiqueta de Entidad (Fija por sesión) */
         .entity-tag { 
-            position: absolute; color: #fff; padding: 6px 15px; 
-            border: 1px solid var(--danger); background: rgba(255, 0, 0, 0.3); 
-            z-index: 40; font-size: 12px; font-weight: bold; pointer-events: none;
+            position: absolute; color: #fff; padding: 4px 10px; border: 1px solid #fff;
+            background: var(--danger); z-index: 40; font-size: 10px; font-weight: bold;
         }
 
         .bottom-ui { 
-            position: fixed; bottom: 0; width: 100%; height: 80px; 
-            background: #000; z-index: 50; display: flex; justify-content: space-between; 
-            align-items: center; padding: 0 30px; border-top: 1px solid var(--main);
+            position: fixed; bottom: 0; width: 100%; height: 80px; background: #000;
+            z-index: 50; display: flex; justify-content: space-between; align-items: center; padding: 0 20px;
+            border-top: 1px solid var(--ui-color);
         }
-        .capture-btn { width: 55px; height: 55px; background: var(--danger); border: 4px solid #fff; border-radius: 50%; }
+        .capture-btn { width: 55px; height: 55px; background: var(--danger); border: 3px solid #fff; border-radius: 50%; }
 
-        #start-screen { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; align-items: center; justify-content: center; }
+        #start-screen { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     </style>
 </head>
 <body>
 
 <div id="start-screen">
-    <button onclick="init()" class="btn" style="font-size: 1.2rem; padding: 20px 40px;">INICIALIZAR ESCÁNER</button>
+    <h1 style="color:var(--main); margin-bottom: 20px;">SPECTRAL AI v7.0</h1>
+    <button onclick="init()" style="background:none; border:1px solid var(--main); color:var(--main); padding:15px 30px;">[ INICIAR ESCANEO BIO-ACÚSTICO ]</button>
 </div>
 
 <video id="video" playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-    <div><div class="stat">Frecuencia Espectral</div><div id="emf" class="val">0.00 μT</div></div>
-    <div style="text-align: right;"><div class="stat">Estado Sistema</div><div id="threat" class="val" style="color:var(--main)">PASSIVE</div></div>
+    <div style="text-align:center"><span class="label">EMF</span><span id="emf" class="val">0.00</span></div>
+    <div style="text-align:center"><span class="label">TIPO</span><span id="obj-type" class="val">BUSCANDO</span></div>
+    <div style="text-align:center"><span class="label">PSICO-AUDIÓMETRO</span><span id="audio-lvl" class="val">0%</span></div>
 </div>
 
-<div id="ui-layer">
-    <button class="btn active" onclick="setFilter('normal', this)">NORMAL</button>
-    <button class="btn" onclick="setFilter('night', this)">NIGHT</button>
-    <button class="btn" onclick="setFilter('thermal', this)">THERM</button>
+<div id="evp-console">
+    <span class="label">CAPTACIÓN PSICOFÓNICA (EVP)</span><br>
+    <span id="evp-word">--- ESCUCHANDO ---</span>
 </div>
 
 <div id="registry"></div>
 <div id="entity-tag" class="entity-tag" style="display:none"></div>
 
 <div class="bottom-ui">
-    <div style="font-size: 9px;">SIGNAL: STABLE<br>GPS: ENCRYPTED</div>
+    <div style="font-size: 8px;">MIC_STATUS: ANALYZING<br>POSE_ENGINE: v1.0</div>
     <button class="capture-btn" onclick="takePhoto()"></button>
-    <div style="text-align:right"><div class="stat">TIME</div><div id="clock" style="font-size: 14px; color:#fff">00:00:00</div></div>
+    <div style="text-align:right"><span id="clock" style="font-size: 14px; color:#fff">00:00:00</span></div>
 </div>
 
 <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const registry = document.getElementById('registry');
     const tag = document.getElementById('entity-tag');
-    let audioCtx = null;
+    let audioCtx, analyser, dataArray;
     
-    // VARIABLES DE CONTROL DE ENTIDAD
-    let currentEntityName = ""; 
-    let isDetecting = false;
+    // SISTEMA DE PERSISTENCIA
+    let activeEntity = null; // Guardará { nombre, categoria, timestamp }
 
-    const PREFIX = ["ANOMALÍA", "PRESENCIA", "ENTIDAD", "MANIFESTACIÓN", "ECO"];
-    const TYPE = ["ECTOPLÁSMICA", "RESIDUAL", "CLASE-V", "DIMENSIONAL", "KINETICA"];
-    const CODES = ["AX-9", "Ω-01", "B-742", "VOID", "S-TYPE"];
+    const WORDS_EVP = ["MORIR", "VETE", "AYUDA", "AQUÍ", "SANGRE", "CORRE", "FRÍO", "ELLOS", "MÍRAME", "NUNCA"];
+    const HUMAN_NAMES = ["SUJETO ALPHA", "S-HUMANOID", "ENTIDAD BIÓTICA", "PRESENCIA HUMANA"];
+    const UNKNOWN_NAMES = ["OBJETO NO IDENTIFICADO", "ANOMALÍA CLASE-V", "RESIDUO SOMBRÍO", "VÓRTICE"];
 
-    function generateStaticName() {
-        return `${PREFIX[Math.floor(Math.random()*PREFIX.length)]} ${TYPE[Math.floor(Math.random()*TYPE.length)]} [${CODES[Math.floor(Math.random()*CODES.length)]}]`;
-    }
-
-    function setFilter(type, btn) {
-        video.style.filter = type === 'night' ? 'brightness(2) sepia(1) hue-rotate(70deg)' : 
-                             type === 'thermal' ? 'contrast(3) hue-rotate(240deg)' : 'none';
-        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-    }
-
-    function sound(f, d) {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.frequency.value = f;
-        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
-        o.connect(g); g.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime + d);
+    function getStaticEntity(isHuman) {
+        const pool = isHuman ? HUMAN_NAMES : UNKNOWN_NAMES;
+        return {
+            name: pool[Math.floor(Math.random() * pool.length)] + " [" + Math.floor(Math.random()*999) + "]",
+            category: isHuman ? "HUMANO" : "NO IDENTIFICADO"
+        };
     }
 
     async function init() {
         document.getElementById('start-screen').style.display = 'none';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
         video.srcObject = stream;
         video.play();
+        
+        // Setup Audio para Psicofonías
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        source.connect(analyser);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
+        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.6 });
         pose.onResults(onResults);
 
         const frame = async () => {
-            if(video.readyState === 4) await pose.send({ image: video });
+            if(video.readyState === 4) {
+                await pose.send({ image: video });
+                updateEVP();
+            }
             requestAnimationFrame(frame);
         };
         frame();
@@ -155,68 +144,72 @@
 
     function onResults(res) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+        const objTypeEl = document.getElementById('obj-type');
+
         if (res.poseLandmarks) {
-            // Si es una nueva detección, genera el nombre UNA SOLA VEZ
-            if (!isDetecting) {
-                currentEntityName = generateStaticName();
-                isDetecting = true;
-                addLog(currentEntityName);
-                sound(150, 0.5); // Sonido bajo de detección
-                video.classList.add('glitch-active');
-                setTimeout(() => video.classList.remove('glitch-active'), 1000);
+            // Si NO había entidad o se perdió la anterior, fijamos una nueva
+            if (!activeEntity) {
+                activeEntity = getStaticEntity(true); // Se detectó pose = Humano
+                document.body.style.setProperty('--ui-color', 'var(--danger)');
+                addLog(`BLOQUEADO: ${activeEntity.name}`);
+                navigator.vibrate([100, 50, 100]); // Vibración de detección
             }
-            drawGhost(res.poseLandmarks);
-            updateHUD(true);
+            
+            objTypeEl.innerText = activeEntity.category;
+            drawUI(res.poseLandmarks);
         } else {
-            // Cuando se pierde el rastro, reiniciamos el estado
-            isDetecting = false;
-            currentEntityName = "";
-            tag.style.display = 'none';
-            updateHUD(false);
+            // Reset cuando no hay nadie
+            if (activeEntity) {
+                activeEntity = null;
+                document.body.style.setProperty('--ui-color', 'var(--main)');
+                tag.style.display = 'none';
+                objTypeEl.innerText = "BUSCANDO";
+            }
         }
     }
 
-    function drawGhost(lm) {
+    function drawUI(lm) {
         const head = lm[0];
         tag.style.display = 'block';
         tag.style.left = (head.x * canvas.width) + 'px';
         tag.style.top = (head.y * canvas.height - 40) + 'px';
-        tag.innerText = currentEntityName;
+        tag.innerText = activeEntity.name;
 
-        ctx.strokeStyle = "rgba(0, 255, 65, 0.6)";
-        ctx.setLineDash([5, 5]);
+        // Dibujo de esqueleto técnico
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        lm.forEach((p, i) => {
-            const x = p.x * canvas.width;
-            const y = p.y * canvas.height;
-            ctx.lineTo(x, y);
-            if(Math.random() > 0.95) { // Pequeños saltos de "error" en el dibujo
-                ctx.moveTo(x + 10, y - 10);
-            }
-        });
+        lm.forEach((p) => ctx.lineTo(p.x * canvas.width, p.y * canvas.height));
         ctx.stroke();
+    }
+
+    function updateEVP() {
+        analyser.getByteFrequencyData(dataArray);
+        const sum = dataArray.reduce((a, b) => a + b, 0);
+        const avg = sum / dataArray.length;
+        document.getElementById('audio-lvl').innerText = Math.floor(avg) + "%";
+
+        // Probabilidad de captar palabra si hay ruido
+        if (avg > 30 && Math.random() > 0.995) {
+            const word = WORDS_EVP[Math.floor(Math.random() * WORDS_EVP.length)];
+            document.getElementById('evp-word').innerText = "» " + word + " «";
+            addLog(`EVP CAPTADO: "${word}"`);
+            setTimeout(() => { document.getElementById('evp-word').innerText = "--- ESCUCHANDO ---"; }, 2000);
+        }
+        
+        const emf = activeEntity ? (30 + avg).toFixed(2) : (avg/4).toFixed(2);
+        document.getElementById('emf').innerText = emf;
     }
 
     function addLog(msg) {
         const item = document.createElement('div');
-        item.style.color = "var(--danger)";
-        item.innerHTML = `> [ALERTA] ${msg}`;
+        item.innerHTML = `[${new Date().getSeconds()}s] ${msg}`;
         registry.prepend(item);
-        if (registry.children.length > 4) registry.lastChild.remove();
-    }
-
-    function updateHUD(det) {
-        const emf = det ? (20 + Math.random()*50).toFixed(2) : (Math.random()*1.5).toFixed(2);
-        document.getElementById('emf').innerText = emf + " μT";
-        const th = document.getElementById('threat');
-        th.innerText = det ? "ACTIVE" : "PASSIVE";
-        th.style.color = det ? "var(--danger)" : "var(--main)";
+        if (registry.children.length > 5) registry.lastChild.remove();
     }
 
     function takePhoto() {
-        sound(1000, 0.1);
-        alert("Evidencia Guardada en Memoria Local");
+        alert("EXPEDIENTE GUARDADO: " + (activeEntity ? activeEntity.name : "SCAN_VACIO"));
     }
 </script>
 </body>
